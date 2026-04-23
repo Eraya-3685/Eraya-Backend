@@ -16,6 +16,7 @@ import (
 	user_handler "eraya/rest/handlers/user"
 	"eraya/review"
 	"eraya/user"
+	"log"
 	"log/slog"
 
 	"net/http"
@@ -28,7 +29,10 @@ func keepAlive(url string) {
 	for range ticker.C {
 		resp, err := http.Get(url)
 		if err == nil {
+			log.Printf("Keep-alive ping sent to %s | Status: %s", url, resp.Status)
 			resp.Body.Close()
+		} else {
+			log.Printf("Keep-alive ping failed: %v", err)
 		}
 	}
 }
