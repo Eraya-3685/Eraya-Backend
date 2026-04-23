@@ -397,10 +397,85 @@ paths:
       - products
     post:
       consumes:
-      - application/json
-      description: Add a new product to the catalog (admin only).
+      - multipart/form-data
+      description: Add a new product and upload images to Supabase (admin only).
       parameters:
-      - description: Product Details
+      - description: Product Name
+        in: formData
+        name: name
+        required: true
+        type: string
+      - description: Product Description
+        in: formData
+        name: description
+        type: string
+      - description: Base Price
+        in: formData
+        name: base_price
+        required: true
+        type: number
+      - description: Discount Price
+        in: formData
+        name: discount_price
+        type: number
+      - description: Stock Count
+        in: formData
+        name: stock_count
+        required: true
+        type: integer
+      - description: Category ID
+        in: formData
+        name: category_id
+        type: integer
+      - description: Product Images
+        in: formData
+        name: images
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.Product'
+      security:
+      - BearerAuth: []
+      summary: Create a new product with images
+      tags:
+      - products
+  /products/{id}:
+    delete:
+      description: Remove a product and its images (admin only).
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Delete a product
+      tags:
+      - products
+    put:
+      consumes:
+      - application/json
+      description: Update product details (admin only).
+      parameters:
+      - description: Product ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated Product Details
         in: body
         name: product
         required: true
@@ -409,17 +484,13 @@ paths:
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
-          schema:
-            $ref: '#/definitions/domain.Product'
-        "403":
-          description: Forbidden
+        "200":
+          description: OK
           schema:
             type: string
       security:
       - BearerAuth: []
-      summary: Create a new product
+      summary: Update an existing product
       tags:
       - products
   /products/{slug}:

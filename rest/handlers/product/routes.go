@@ -15,6 +15,10 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string) {
 		r.With(
 			middleware.AuthMiddleware(jwtSecret),
 			middleware.AdminMiddleware(),
-		).Post("/", h.CreateProduct)
+		).Group(func(r chi.Router) {
+			r.Post("/", h.CreateProduct)
+			r.Put("/{id}", h.UpdateProduct)
+			r.Delete("/{id}", h.DeleteProduct)
+		})
 	})
 }

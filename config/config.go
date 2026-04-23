@@ -8,6 +8,12 @@ import (
 	"github.com/joho/godotenv"
 )
 
+type SupabaseConfig struct {
+	URL    string
+	Key    string
+	Bucket string
+}
+
 type Config struct {
 	HttpPort       int
 	DatabaseURL    string
@@ -15,6 +21,7 @@ type Config struct {
 	JwtSecretKey   string
 	BaseURL        string
 	AllowedOrigins string
+	Supabase       SupabaseConfig
 }
 
 var configurations *Config
@@ -43,6 +50,11 @@ func loadConfig() {
 		RedisURL:       getEnv("REDIS_URL", ""),
 		AllowedOrigins: getEnv("ALLOWED_ORIGINS", ""),
 		BaseURL:        getEnv("BASE_URL", "http://localhost:8080"),
+		Supabase: SupabaseConfig{
+			URL:    getEnv("SUPABASE_URL", ""),
+			Key:    getEnv("SUPABASE_SERVICE_KEY", ""),
+			Bucket: getEnv("SUPABASE_BUCKET", "eraya"),
+		},
 	}
 }
 

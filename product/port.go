@@ -7,6 +7,8 @@ type Service interface {
 	GetProducts(page, limit int64) ([]*domain.Product, int64, error)
 	GetProductBySlug(slug string) (*domain.Product, error)
 	GetProductByID(id int64) (*domain.Product, error)
+	UpdateProduct(product *domain.Product) error
+	DeleteProduct(id int64) error
 }
 
 type ProductRepo interface {
@@ -15,6 +17,8 @@ type ProductRepo interface {
 	Count() (int64, error)
 	FindBySlug(slug string) (*domain.Product, error)
 	FindByID(id int64) (*domain.Product, error)
+	Update(product *domain.Product) error
+	Delete(id int64) error
 }
 
 type ProductCache interface {

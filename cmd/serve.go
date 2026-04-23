@@ -5,6 +5,7 @@ import (
 	"eraya/config"
 	"eraya/infra/db"
 	"eraya/infra/redis"
+	"eraya/infra/storage"
 	"eraya/order"
 	"eraya/product"
 	"eraya/repo"
@@ -58,6 +59,8 @@ func Serve() {
 		os.Exit(1)
 	}
 
+	storageService := storage.NewStorageService(cnf.Supabase)
+
 	userRepo := repo.NewUserRepo(dbCon)
 	userService := user.NewService(userRepo, cnf.JwtSecretKey)
 	userHandler := user_handler.NewHandler(userService)
@@ -65,7 +68,7 @@ func Serve() {
 	productRepo := repo.NewProductRepo(dbCon)
 	productCache := repo.NewProductCache(redisDB)
 	productService := product.NewService(productRepo, productCache)
-	productHandler := product_handler.NewHandler(productService)
+	productHandler := product_handler.NewHandler(productService, storageService)
 
 	cartRepo := repo.NewCartRepo(dbCon)
 	orderRepo := repo.NewOrderRepo(dbCon)

@@ -295,7 +295,83 @@ const docTemplate = `{
                         "BearerAuth": []
                     }
                 ],
-                "description": "Add a new product to the catalog (admin only).",
+                "description": "Add a new product and upload images to Supabase (admin only).",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Create a new product with images",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Product Name",
+                        "name": "name",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Product Description",
+                        "name": "description",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "number",
+                        "description": "Base Price",
+                        "name": "base_price",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "number",
+                        "description": "Discount Price",
+                        "name": "discount_price",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Stock Count",
+                        "name": "stock_count",
+                        "in": "formData",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Category ID",
+                        "name": "category_id",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Product Images",
+                        "name": "images",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Product"
+                        }
+                    }
+                }
+            }
+        },
+        "/products/{id}": {
+            "put": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Update product details (admin only).",
                 "consumes": [
                     "application/json"
                 ],
@@ -305,10 +381,17 @@ const docTemplate = `{
                 "tags": [
                     "products"
                 ],
-                "summary": "Create a new product",
+                "summary": "Update an existing product",
                 "parameters": [
                     {
-                        "description": "Product Details",
+                        "type": "integer",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Updated Product Details",
                         "name": "product",
                         "in": "body",
                         "required": true,
@@ -318,14 +401,40 @@ const docTemplate = `{
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Created",
+                    "200": {
+                        "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/domain.Product"
+                            "type": "string"
                         }
-                    },
-                    "403": {
-                        "description": "Forbidden",
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove a product and its images (admin only).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "products"
+                ],
+                "summary": "Delete a product",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Product ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
                         "schema": {
                             "type": "string"
                         }

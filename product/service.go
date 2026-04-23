@@ -49,3 +49,24 @@ func (s *service) GetProductBySlug(slug string) (*domain.Product, error) {
 func (s *service) GetProductByID(id int64) (*domain.Product, error) {
 	return s.repo.FindByID(id)
 }
+
+func (s *service) UpdateProduct(p *domain.Product) error {
+	err := s.repo.Update(p)
+	if err == nil {
+		go s.invalidateCache()
+	}
+	return err
+}
+
+func (s *service) DeleteProduct(id int64) error {
+	err := s.repo.Delete(id)
+	if err == nil {
+		go s.invalidateCache()
+	}
+	return err
+}
+
+func (s *service) invalidateCache() {
+	products, _ := s.repo.List(1, 100)
+	s.cache.SetLatestProducts(products)
+}
