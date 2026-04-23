@@ -52,7 +52,6 @@ func NewServer(
 func (server *Server) Start() {
 	manager := erayamiddleware.NewManager()
 	manager.Use(
-		erayamiddleware.Preflight,
 		erayamiddleware.Cors,
 	)
 
