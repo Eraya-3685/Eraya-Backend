@@ -12,7 +12,7 @@ package main
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
 
-// @host localhost:8080
+// @host https://eraya-backend.onrender.com
 // @BasePath /api/v1
 
 // @securityDefinitions.apikey BearerAuth
