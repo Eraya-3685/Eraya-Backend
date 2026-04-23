@@ -1,0 +1,644 @@
+basePath: /api/v1
+definitions:
+  domain.CartItem:
+    properties:
+      id:
+        type: integer
+      product:
+        $ref: '#/definitions/domain.Product'
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+      user_id:
+        type: integer
+    type: object
+  domain.Order:
+    properties:
+      confirmed_at:
+        type: string
+      created_at:
+        type: string
+      delivered_at:
+        type: string
+      id:
+        type: integer
+      items:
+        items:
+          $ref: '#/definitions/domain.OrderItem'
+        type: array
+      order_status:
+        type: string
+      payment_method:
+        type: string
+      payment_status:
+        type: string
+      shipped_at:
+        type: string
+      shipping_address:
+        type: string
+      total_price:
+        type: number
+      tracking_number:
+        type: string
+      trx_id:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  domain.OrderItem:
+    properties:
+      id:
+        type: integer
+      order_id:
+        type: integer
+      price_at_purchase:
+        type: number
+      product:
+        $ref: '#/definitions/domain.Product'
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+    type: object
+  domain.Product:
+    properties:
+      average_rating:
+        type: number
+      base_price:
+        type: number
+      category_id:
+        type: integer
+      created_at:
+        type: string
+      description:
+        type: string
+      discount_percentage:
+        type: integer
+      discount_price:
+        type: number
+      id:
+        type: integer
+      images:
+        items:
+          $ref: '#/definitions/domain.ProductImage'
+        type: array
+      is_active:
+        type: boolean
+      name:
+        type: string
+      sales_count:
+        type: integer
+      slug:
+        type: string
+      stock_count:
+        type: integer
+      total_reviews:
+        type: integer
+    type: object
+  domain.ProductImage:
+    properties:
+      id:
+        type: integer
+      image_url:
+        type: string
+      is_primary:
+        type: boolean
+      product_id:
+        type: integer
+    type: object
+  domain.Review:
+    properties:
+      comment:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: integer
+      is_approved:
+        type: boolean
+      is_verified:
+        type: boolean
+      product_id:
+        type: integer
+      rating:
+        type: integer
+      user:
+        $ref: '#/definitions/domain.User'
+      user_id:
+        type: integer
+    type: object
+  domain.User:
+    properties:
+      address:
+        type: string
+      created_at:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: integer
+      is_active:
+        type: boolean
+      phone:
+        type: string
+      role:
+        type: string
+      social_id:
+        type: string
+    type: object
+  order.addToCartReq:
+    properties:
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+    type: object
+  order.checkoutReq:
+    properties:
+      payment_method:
+        type: string
+      shipping_address:
+        type: string
+    type: object
+  review.createReviewReq:
+    properties:
+      comment:
+        type: string
+      product_id:
+        type: integer
+      rating:
+        type: integer
+    type: object
+  user.loginReq:
+    properties:
+      identifier:
+        type: string
+      password:
+        type: string
+    type: object
+  user.signupReq:
+    properties:
+      address:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      password:
+        type: string
+      phone:
+        type: string
+    type: object
+  user.updateRoleReq:
+    properties:
+      role:
+        type: string
+    type: object
+  util.PaginatedData:
+    properties:
+      data: {}
+      pagination:
+        $ref: '#/definitions/util.Pagination'
+    type: object
+  util.Pagination:
+    properties:
+      limit:
+        type: integer
+      page:
+        type: integer
+      total_items:
+        type: integer
+      total_pages:
+        type: integer
+    type: object
+host: localhost:8080
+info:
+  contact:
+    email: support@swagger.io
+    name: API Support
+    url: http://www.swagger.io/support
+  description: This is a professional ecommerce server for Eraya.
+  license:
+    name: Apache 2.0
+    url: http://www.apache.org/licenses/LICENSE-2.0.html
+  termsOfService: http://swagger.io/terms/
+  title: Eraya Ecommerce API
+  version: "1.0"
+paths:
+  /admin/orders:
+    get:
+      description: Retrieve a list of all orders in the system (admin only).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Order'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: List all orders (Admin)
+      tags:
+      - admin
+  /admin/orders/{id}/confirm:
+    post:
+      description: Mark an order as confirmed and paid (admin only).
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Confirm an order (Admin)
+      tags:
+      - admin
+  /cart:
+    get:
+      description: Retrieve all items in the logged-in user's shopping cart.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.CartItem'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: View shopping cart
+      tags:
+      - cart
+    post:
+      consumes:
+      - application/json
+      description: Add a product to the user's shopping cart (buyers only).
+      parameters:
+      - description: Product Details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/order.addToCartReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Add a product to cart
+      tags:
+      - cart
+  /orders:
+    get:
+      description: Retrieve a list of all orders placed by the logged-in user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Order'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Get order history
+      tags:
+      - orders
+  /orders/checkout:
+    post:
+      consumes:
+      - application/json
+      description: Create an order from the items in the cart (buyers only).
+      parameters:
+      - description: Checkout Details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/order.checkoutReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.Order'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Place an order
+      tags:
+      - orders
+  /products:
+    get:
+      description: Retrieve a paginated list of active products.
+      parameters:
+      - default: 1
+        description: Page number
+        in: query
+        name: page
+        type: integer
+      - default: 10
+        description: Items per page
+        in: query
+        name: limit
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/util.PaginatedData'
+      summary: List all products
+      tags:
+      - products
+    post:
+      consumes:
+      - application/json
+      description: Add a new product to the catalog (admin only).
+      parameters:
+      - description: Product Details
+        in: body
+        name: product
+        required: true
+        schema:
+          $ref: '#/definitions/domain.Product'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.Product'
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Create a new product
+      tags:
+      - products
+  /products/{slug}:
+    get:
+      description: Retrieve details of a product by its slug.
+      parameters:
+      - description: Product Slug
+        in: path
+        name: slug
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.Product'
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      summary: Get a single product
+      tags:
+      - products
+  /reviews:
+    post:
+      consumes:
+      - application/json
+      description: Submit a rating and comment for a product (buyers only).
+      parameters:
+      - description: Review Details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/review.createReviewReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.Review'
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Submit a product review
+      tags:
+      - reviews
+  /reviews/{productId}:
+    get:
+      description: Retrieve all reviews for a specific product.
+      parameters:
+      - description: Product ID
+        in: path
+        name: productId
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Review'
+            type: array
+      summary: Get reviews for a product
+      tags:
+      - reviews
+  /users/{id}/role:
+    patch:
+      consumes:
+      - application/json
+      description: Update the role of a user (admin only).
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: New Role
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.updateRoleReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Update user role
+      tags:
+      - admin
+  /users/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate a user using email/phone and password. Returns a JWT
+        token.
+      parameters:
+      - description: Login Details
+        in: body
+        name: login
+        required: true
+        schema:
+          $ref: '#/definitions/user.loginReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      summary: Login a user
+      tags:
+      - users
+  /users/profile:
+    get:
+      description: Retrieve the profile details of the currently logged-in user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.User'
+        "401":
+          description: Unauthorized
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Get user profile
+      tags:
+      - users
+  /users/signup:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user account with full name, email, password, phone,
+        and address.
+      parameters:
+      - description: Signup Details
+        in: body
+        name: signup
+        required: true
+        schema:
+          $ref: '#/definitions/user.signupReq'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.User'
+        "400":
+          description: Bad Request
+          schema:
+            type: string
+      summary: Register a new user
+      tags:
+      - users
+  /ws/chat:
+    get:
+      description: Establish a WebSocket connection for real-time messaging. Requires
+        token in query param.
+      parameters:
+      - description: Chat with User ID
+        in: query
+        name: with
+        required: true
+        type: integer
+      - description: JWT Token
+        in: query
+        name: token
+        required: true
+        type: string
+      responses: {}
+      summary: Connect to real-time chat
+      tags:
+      - chat
+securityDefinitions:
+  BearerAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
+tags:
+- description: User management and authentication
+  name: users
+- description: Product catalog and details
+  name: products
+- description: Shopping cart management
+  name: cart
+- description: Order placement and history
+  name: orders
+- description: Product ratings and comments
+  name: reviews
+- description: Real-time customer support
+  name: chat
+- description: Administrative operations
+  name: admin

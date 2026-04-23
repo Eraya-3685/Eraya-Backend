@@ -1,0 +1,167 @@
+package user
+
+import (
+	"encoding/json"
+	"eraya/domain"
+	"eraya/user"
+	middleware "eraya/rest/middlewares"
+	"net/http"
+	"strconv"
+
+	"github.com/go-chi/chi/v5"
+)
+
+type Handler struct {
+	middlewares *middleware.Middlewares
+	svc         user.Service
+}
+
+func NewHandler(middlewares *middleware.Middlewares, svc user.Service) *Handler {
+	return &Handler{
+		middlewares: middlewares,
+		svc:         svc,
+	}
+}
+
+type signupReq struct {
+	FullName string  `json:"full_name"`
+	Email    string  `json:"email"`
+	Password string  `json:"password"`
+	Phone    *string `json:"phone"`
+	Address  *string `json:"address"`
+}
+
+// Signup godoc
+// @Summary Register a new user
+// @Description Create a new user account with full name, email, password, phone, and address.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param signup body signupReq true "Signup Details"
+// @Success 201 {object} domain.User
+// @Failure 400 {string} string "Bad Request"
+// @Router /users/signup [post]
+func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
+	var req signupReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	u := &domain.User{
+		FullName: req.FullName,
+		Email:    req.Email,
+		Phone:    req.Phone,
+		Address:  req.Address,
+		Role:     "buyer",
+	}
+
+	createdUser, err := h.svc.Signup(u, req.Password)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(createdUser)
+}
+
+type loginReq struct {
+	Identifier string `json:"identifier"`
+	Password   string `json:"password"`
+}
+
+// Login godoc
+// @Summary Login a user
+// @Description Authenticate a user using email/phone and password. Returns a JWT token.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param login body loginReq true "Login Details"
+// @Success 200 {object} map[string]string
+// @Failure 401 {string} string "Unauthorized"
+// @Router /users/login [post]
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var req loginReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	token, err := h.svc.Login(req.Identifier, req.Password)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"token": token})
+}
+
+// GetProfile godoc
+// @Summary Get user profile
+// @Description Retrieve the profile details of the currently logged-in user.
+// @Tags users
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} domain.User
+// @Failure 401 {string} string "Unauthorized"
+// @Router /users/profile [get]
+func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
+	userIDVal := r.Context().Value("user_id")
+	if userIDVal == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	userID := userIDVal.(int64)
+	user, err := h.svc.GetProfile(userID)
+	if err != nil || user == nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
+
+type updateRoleReq struct {
+	Role string `json:"role"`
+}
+
+// UpdateUserRole godoc
+// @Summary Update user role
+// @Description Update the role of a user (admin only).
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "User ID"
+// @Param body body updateRoleReq true "New Role"
+// @Success 200 {string} string "OK"
+// @Failure 403 {string} string "Forbidden"
+// @Router /users/{id}/role [patch]
+func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	userID, _ := strconv.ParseInt(idStr, 10, 64)
+
+	var req updateRoleReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if req.Role != "admin" && req.Role != "buyer" {
+		http.Error(w, "invalid role", http.StatusBadRequest)
+		return
+	}
+
+	err := h.svc.UpdateRole(userID, req.Role)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
