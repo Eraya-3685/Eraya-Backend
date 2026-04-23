@@ -214,7 +214,7 @@ definitions:
       total_pages:
         type: integer
     type: object
-host: localhost:8080
+host: eraya-backend.onrender.com
 info:
   contact:
     email: support@swagger.io
@@ -621,6 +621,9 @@ paths:
       summary: Connect to real-time chat
       tags:
       - chat
+schemes:
+- https
+- http
 securityDefinitions:
   BearerAuth:
     in: header

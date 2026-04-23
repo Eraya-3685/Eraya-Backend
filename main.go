@@ -12,8 +12,9 @@ package main
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
 
-// @host https://eraya-backend.onrender.com
+// @host eraya-backend.onrender.com
 // @BasePath /api/v1
+// @schemes https http
 
 // @securityDefinitions.apikey BearerAuth
 // @in header

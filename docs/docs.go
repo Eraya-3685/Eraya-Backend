@@ -1010,9 +1010,9 @@ const docTemplate = `{
 // SwaggerInfo holds exported Swagger Info so clients can modify it
 var SwaggerInfo = &swag.Spec{
 	Version:          "1.0",
-	Host:             "localhost:8080",
+	Host:             "eraya-backend.onrender.com",
 	BasePath:         "/api/v1",
-	Schemes:          []string{},
+	Schemes:          []string{"https", "http"},
 	Title:            "Eraya Ecommerce API",
 	Description:      "This is a professional ecommerce server for Eraya.",
 	InfoInstanceName: "swagger",
