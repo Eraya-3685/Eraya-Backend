@@ -20,16 +20,27 @@ func NewService(repo UserRepo, jwtSecret string) Service {
 }
 
 func (s *service) Signup(user *domain.User, password string) (*domain.User, error) {
+	if user.Email == "" || password == "" {
+		return nil, errors.New("email and password are required")
+	}
+
 	if user.Phone != nil {
 		normalized := util.NormalizePhone(*user.Phone)
 		if !util.IsValidBDPhone(normalized) {
 			return nil, errors.New("invalid phone number format")
 		}
 		user.Phone = &normalized
+
+		// Pre-check duplicate phone
+		existingPhone, _ := s.repo.FindByEmailOrPhone(*user.Phone)
+		if existingPhone != nil {
+			return nil, errors.New("phone number already exists")
+		}
 	}
 
-	existing, _ := s.repo.FindByEmail(user.Email)
-	if existing != nil {
+	// Pre-check duplicate email
+	existingEmail, _ := s.repo.FindByEmail(user.Email)
+	if existingEmail != nil {
 		return nil, errors.New("email already exists")
 	}
 
