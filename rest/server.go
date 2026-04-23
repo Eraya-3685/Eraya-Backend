@@ -66,7 +66,7 @@ func (server *Server) Start() {
 	})
 
 	mux.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("http://localhost:8080/swagger/doc.json"), // The url pointing to API definition
+		httpSwagger.URL("/swagger/doc.json"), // Relative URL works on both HTTP and HTTPS
 	))
 
 	mux.Get("/docs", func(w http.ResponseWriter, r *http.Request) {

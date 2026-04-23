@@ -6,61 +6,68 @@ Eraya is a robust, production-ready e-commerce backend built with **Go (Golang)*
 
 ## 📖 Live API Documentation
 
-Instead of manual lists, we provide interactive, industry-standard documentation tools:
+We provide interactive, industry-standard documentation tools that stay in sync with the code:
 
-*   **🚀 ReDoc (Premium Look):** [http://localhost:8080/docs](http://localhost:8080/docs)
-    *Best for readability and understanding the API structure.*
-*   **🛠️ Swagger UI (Interactive):** [http://localhost:8080/swagger/index.html](http://localhost:8080/swagger/index.html)
-    *Best for testing APIs directly from your browser.*
+*   **🚀 ReDoc (Premium Look):** `YOUR_SERVER_URL/docs`
+    *Best for readability and high-level structure.*
+*   **🛠️ Swagger UI (Interactive):** `YOUR_SERVER_URL/swagger/index.html`
+    *Best for testing APIs directly with live requests.*
 
----
-
-## 🛠️ Technology Stack
-
-*   **Language:** Go (Golang)
-*   **Framework:** Chi Router (Lightweight & Fast)
-*   **Database:** PostgreSQL (with SQLx)
-*   **Cache/OTP:** Redis
-*   **Auth:** JWT (JSON Web Tokens)
-*   **Documentation:** OpenAPI / Swagger / ReDoc
-*   **Messaging:** WebSockets (Real-time Chat)
+> **Note:** Replace `YOUR_SERVER_URL` with `http://localhost:8080` for local development or your production domain (e.g., `https://eraya.onrender.com`).
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ Architecture & Technology Stack
+
+### Core Principles
+- **Hexagonal Architecture:** Decoupled business logic from external drivers (DB, Web).
+- **Clean Dependency Injection:** Functions only receive the specific configurations they need.
+- **RESTful Design:** Standard HTTP methods and status codes.
+
+### Tech Stack
+- **Language:** Go (Golang) 1.21+
+- **Database:** PostgreSQL (with SQLx for clean queries)
+- **Cache/PubSub:** Redis (Supports TLS for Cloud providers like Upstash)
+- **Auth:** JWT (JSON Web Tokens) with Role-Based Access Control (RBAC)
+- **Messaging:** WebSockets for real-time chat support.
+
+---
+
+## 🚀 Installation & Setup
 
 ### 1. Prerequisites
-- Go 1.21+
+- Go 1.21 or higher
 - PostgreSQL
-- Redis
+- Redis (Local or Cloud like Upstash)
 
-### 2. Environment Setup
-Create a `.env` file in the root directory:
+### 2. Environment Variables
+Create a `.env` file in the root:
 ```env
 PORT=8080
-DATABASE_URL=postgres://user:pass@localhost:5432/eraya?sslmode=disable
-JWT_SECRET_KEY=your_secret_key
-REDIS_HOST=localhost:6379
+DATABASE_URL="postgresql://user:password@host:port/dbname?sslmode=disable"
+REDIS_URL="rediss://default:password@host:port"
+JWT_SECRET_KEY="your-super-secret-key"
 ```
 
-### 3. Run the Project
+### 3. Execution Commands
 ```bash
 # Install dependencies
 go mod tidy
 
-# Generate Swagger docs
+# Update Swagger Docs (whenever annotations change)
 go run github.com/swaggo/swag/cmd/swag init
 
-# Start the server
+# Run the server
 go run main.go
 ```
 
 ---
 
-## 🔐 Security Note
+## 🔐 Security & Integration
 
-All protected endpoints require a Bearer Token:
-- **Header:** `Authorization: Bearer <your_jwt_token>`
-- **WebSocket:** Use query param `?token=<your_jwt_token>`
+- **Authorization:** All protected routes require `Authorization: Bearer <token>`
+- **Chat Auth:** For WebSockets, pass the token as a query parameter: `?token=<token>`
+- **Database Migrations:** Automatically runs migrations from the `/migrations` folder on startup.
 
 ---
+*Built with ❤️ for Eraya Team*
