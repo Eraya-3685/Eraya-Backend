@@ -20,7 +20,6 @@ import (
 
 	"net/http"
 	"os"
-	"os/exec"
 	"time"
 )
 
@@ -46,12 +45,6 @@ func Serve() {
 	err = db.MigrateDB(dbCon, "./migrations")
 	if err != nil {
 		slog.Error("DB Migrate Error", "error", err)
-		os.Exit(1)
-	}
-
-	cmd := exec.Command("bash", "./redis_up.sh")
-	if err := cmd.Run(); err != nil {
-		slog.Error("Redis Start Error", "error", err)
 		os.Exit(1)
 	}
 
