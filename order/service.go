@@ -6,7 +6,10 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"sync"
 	"time"
+
+	"golang.org/x/sync/errgroup"
 )
 
 type service struct {
@@ -44,24 +47,36 @@ func (s *service) Checkout(userID int64, paymentMethod, shippingAddress string) 
 
 	var total float64
 	var orderItems []*domain.OrderItem
+	var mu sync.Mutex
+	g := new(errgroup.Group)
 
 	for _, item := range cartItems {
-		p, err := s.productSvc.GetProductByID(item.ProductID)
-		if err != nil {
-			return nil, fmt.Errorf("product not found: %d", item.ProductID)
-		}
+		item := item // Capture for closure
+		g.Go(func() error {
+			p, err := s.productSvc.GetProductByID(item.ProductID)
+			if err != nil {
+				return fmt.Errorf("product not found: %d", item.ProductID)
+			}
 
-		price := p.BasePrice
-		if p.DiscountPrice != nil && *p.DiscountPrice > 0 {
-			price = *p.DiscountPrice
-		}
+			price := p.BasePrice
+			if p.DiscountPrice != nil && *p.DiscountPrice > 0 {
+				price = *p.DiscountPrice
+			}
 
-		total += price * float64(item.Quantity)
-		orderItems = append(orderItems, &domain.OrderItem{
-			ProductID:       item.ProductID,
-			Quantity:        item.Quantity,
-			PriceAtPurchase: price,
+			mu.Lock()
+			total += price * float64(item.Quantity)
+			orderItems = append(orderItems, &domain.OrderItem{
+				ProductID:       item.ProductID,
+				Quantity:        item.Quantity,
+				PriceAtPurchase: price,
+			})
+			mu.Unlock()
+			return nil
 		})
+	}
+
+	if err := g.Wait(); err != nil {
+		return nil, err
 	}
 
 	order := &domain.Order{

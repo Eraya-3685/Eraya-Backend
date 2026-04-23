@@ -40,7 +40,16 @@ We provide interactive, industry-standard documentation tools that stay in sync 
 - PostgreSQL
 - Redis (Local or Cloud like Upstash)
 
-### 2. Execution Commands
+### 2. Environment Variables
+Create a `.env` file in the root:
+```env
+PORT=8080
+DATABASE_URL="postgresql://user:password@host:port/dbname?sslmode=disable"
+REDIS_URL="rediss://default:password@host:port"
+JWT_SECRET_KEY="your-super-secret-key"
+```
+
+### 3. Execution Commands
 ```bash
 # Install dependencies
 go mod tidy
@@ -59,3 +68,6 @@ go run main.go
 - **Authorization:** All protected routes require `Authorization: Bearer <token>`
 - **Chat Auth:** For WebSockets, pass the token as a query parameter: `?token=<token>`
 - **Database Migrations:** Automatically runs migrations from the `/migrations` folder on startup.
+
+---
+*Built with ❤️ for Eraya Team*

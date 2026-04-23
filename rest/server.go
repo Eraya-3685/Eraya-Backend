@@ -59,6 +59,21 @@ func (server *Server) Start() {
 	mux.Use(middleware.Logger)
 	mux.Use(middleware.Recoverer)
 	mux.Use(middleware.RealIP)
+	mux.Use(middleware.Compress(5)) // Gzip compression
+	mux.Use(erayamiddleware.RateLimit) // IP-based Rate Limiting
+
+	// Global Security Headers
+	mux.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("X-Frame-Options", "DENY")
+			w.Header().Set("X-Content-Type-Options", "nosniff")
+			w.Header().Set("X-XSS-Protection", "1; mode=block")
+			if r.TLS != nil {
+				w.Header().Set("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+			}
+			next.ServeHTTP(w, r)
+		})
+	})
 
 	mux.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Write([]byte("OK"))
