@@ -14,7 +14,6 @@ import (
 	product_handler "eraya/rest/handlers/product"
 	review_handler "eraya/rest/handlers/review"
 	user_handler "eraya/rest/handlers/user"
-	middleware "eraya/rest/middlewares"
 	"eraya/review"
 	"eraya/user"
 	"log/slog"
@@ -56,40 +55,39 @@ func Serve() {
 		os.Exit(1)
 	}
 
-	redisDB, err := redis.ConnectRedis(cnf)
+	redisDB, err := redis.ConnectRedis(cnf.RedisURL)
 	if err != nil {
 		slog.Error("Redis Connection Failed", "error", err)
 		os.Exit(1)
 	}
 
-	middlewares := middleware.NewMiddlewares(cnf)
-
 	userRepo := repo.NewUserRepo(dbCon)
 	userService := user.NewService(userRepo, cnf.JwtSecretKey)
-	userHandler := user_handler.NewHandler(middlewares, userService)
+	userHandler := user_handler.NewHandler(userService)
 
 	productRepo := repo.NewProductRepo(dbCon)
 	productCache := repo.NewProductCache(redisDB)
 	productService := product.NewService(productRepo, productCache)
-	productHandler := product_handler.NewHandler(middlewares, productService)
+	productHandler := product_handler.NewHandler(productService)
 
 	cartRepo := repo.NewCartRepo(dbCon)
 	orderRepo := repo.NewOrderRepo(dbCon)
 	orderService := order.NewService(cartRepo, orderRepo, productService)
-	orderHandler := order_handler.NewHandler(middlewares, orderService)
+	orderHandler := order_handler.NewHandler(orderService)
 
 	orderVerifier := repo.NewOrderVerifier(dbCon)
 	reviewRepo := repo.NewReviewRepo(dbCon)
 	reviewService := review.NewService(reviewRepo, orderVerifier)
-	reviewHandler := review_handler.NewHandler(middlewares, reviewService)
+	reviewHandler := review_handler.NewHandler(reviewService)
 
 	chatRepo := repo.NewChatRepo(dbCon)
 	chatPubSub := repo.NewChatPubSub(redisDB)
 	chatService := chat_pkg.NewService(chatRepo, chatPubSub)
-	chatHandler := chat_handler.NewWebSocketHandler(middlewares, chatService)
+	chatHandler := chat_handler.NewWebSocketHandler(chatService)
 
 	server := rest.NewServer(
-		cnf,
+		cnf.HttpPort,
+		cnf.JwtSecretKey,
 		userHandler,
 		productHandler,
 		orderHandler,

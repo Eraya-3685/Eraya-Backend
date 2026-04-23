@@ -3,7 +3,6 @@ package order
 import (
 	"encoding/json"
 	"eraya/order"
-	middleware "eraya/rest/middlewares"
 	"net/http"
 	"strconv"
 
@@ -11,14 +10,12 @@ import (
 )
 
 type Handler struct {
-	middlewares *middleware.Middlewares
-	svc         order.Service
+	svc order.Service
 }
 
-func NewHandler(middlewares *middleware.Middlewares, svc order.Service) *Handler {
+func NewHandler(svc order.Service) *Handler {
 	return &Handler{
-		middlewares: middlewares,
-		svc:         svc,
+		svc: svc,
 	}
 }
 

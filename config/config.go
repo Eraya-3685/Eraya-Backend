@@ -8,18 +8,13 @@ import (
 	"github.com/joho/godotenv"
 )
 
-type RedisConfig struct {
-	Addr     string
-	Password string
-}
-
 type Config struct {
 	HttpPort       int
 	DatabaseURL    string
+	RedisURL       string
 	JwtSecretKey   string
 	BaseURL        string
 	AllowedOrigins string
-	Redis          *RedisConfig
 }
 
 var configurations *Config
@@ -45,12 +40,9 @@ func loadConfig() {
 		HttpPort:       httpPort,
 		JwtSecretKey:   getEnv("JWT_SECRET_KEY", "secret"),
 		DatabaseURL:    getEnv("DATABASE_URL", ""),
+		RedisURL:       getEnv("REDIS_URL", ""),
 		AllowedOrigins: getEnv("ALLOWED_ORIGINS", ""),
 		BaseURL:        getEnv("BASE_URL", "http://localhost:8080"),
-		Redis: &RedisConfig{
-			Addr:     getEnv("REDIS_ADDRESS", getEnv("REDIS_URL", "localhost:6379")),
-			Password: getEnv("REDIS_PASSWORD", ""),
-		},
 	}
 }
 

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"eraya/domain"
 	"eraya/user"
-	middleware "eraya/rest/middlewares"
 	"net/http"
 	"strconv"
 
@@ -12,14 +11,12 @@ import (
 )
 
 type Handler struct {
-	middlewares *middleware.Middlewares
-	svc         user.Service
+	svc user.Service
 }
 
-func NewHandler(middlewares *middleware.Middlewares, svc user.Service) *Handler {
+func NewHandler(svc user.Service) *Handler {
 	return &Handler{
-		middlewares: middlewares,
-		svc:         svc,
+		svc: svc,
 	}
 }
 

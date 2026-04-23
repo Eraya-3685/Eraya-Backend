@@ -1,7 +1,6 @@
 package rest
 
 import (
-	"eraya/config"
 	chat_handler "eraya/rest/handlers/chat"
 	order_handler "eraya/rest/handlers/order"
 	product_handler "eraya/rest/handlers/product"
@@ -21,7 +20,8 @@ import (
 )
 
 type Server struct {
-	cnf            *config.Config
+	port           int
+	jwtSecret      string
 	userHandler    *user_handler.Handler
 	productHandler *product_handler.Handler
 	orderHandler   *order_handler.Handler
@@ -30,7 +30,8 @@ type Server struct {
 }
 
 func NewServer(
-	cnf *config.Config,
+	port int,
+	jwtSecret string,
 	userHandler *user_handler.Handler,
 	productHandler *product_handler.Handler,
 	orderHandler *order_handler.Handler,
@@ -38,7 +39,8 @@ func NewServer(
 	chatHandler *chat_handler.WebSocketHandler,
 ) *Server {
 	return &Server{
-		cnf:            cnf,
+		port:           port,
+		jwtSecret:      jwtSecret,
 		userHandler:    userHandler,
 		productHandler: productHandler,
 		orderHandler:   orderHandler,
@@ -88,16 +90,16 @@ func (server *Server) Start() {
 	})
 
 	mux.Route("/api/v1", func(r chi.Router) {
-		user_handler.RegisterRoutes(r, server.userHandler, server.cnf.JwtSecretKey)
-		product_handler.RegisterRoutes(r, server.productHandler, server.cnf.JwtSecretKey)
-		order_handler.RegisterRoutes(r, server.orderHandler, server.cnf.JwtSecretKey)
-		review_handler.RegisterRoutes(r, server.reviewHandler, server.cnf.JwtSecretKey)
-		chat_handler.RegisterRoutes(r, server.chatHandler, server.cnf.JwtSecretKey)
+		user_handler.RegisterRoutes(r, server.userHandler, server.jwtSecret)
+		product_handler.RegisterRoutes(r, server.productHandler, server.jwtSecret)
+		order_handler.RegisterRoutes(r, server.orderHandler, server.jwtSecret)
+		review_handler.RegisterRoutes(r, server.reviewHandler, server.jwtSecret)
+		chat_handler.RegisterRoutes(r, server.chatHandler, server.jwtSecret)
 	})
 
 	wrappedMux := manager.WrapMux(mux, manager.GetGlobalMiddlewares()...)
 
-	address := ":" + strconv.Itoa(server.cnf.HttpPort)
+	address := ":" + strconv.Itoa(server.port)
 
 	fmt.Println("Server running on", address)
 	err := http.ListenAndServe(address, wrappedMux)

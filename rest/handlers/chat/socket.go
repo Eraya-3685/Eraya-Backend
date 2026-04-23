@@ -2,7 +2,6 @@ package chat
 
 import (
 	"eraya/chat"
-	middleware "eraya/rest/middlewares"
 	"log"
 	"net/http"
 	"strconv"
@@ -19,14 +18,12 @@ var upgrader = websocket.Upgrader{
 }
 
 type WebSocketHandler struct {
-	middlewares *middleware.Middlewares
-	svc         chat.Service
+	svc chat.Service
 }
 
-func NewWebSocketHandler(middlewares *middleware.Middlewares, svc chat.Service) *WebSocketHandler {
+func NewWebSocketHandler(svc chat.Service) *WebSocketHandler {
 	return &WebSocketHandler{
-		middlewares: middlewares,
-		svc:         svc,
+		svc: svc,
 	}
 }
 

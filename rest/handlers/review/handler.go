@@ -3,7 +3,6 @@ package review
 import (
 	"encoding/json"
 	"eraya/review"
-	middleware "eraya/rest/middlewares"
 	"net/http"
 	"strconv"
 
@@ -11,14 +10,12 @@ import (
 )
 
 type Handler struct {
-	middlewares *middleware.Middlewares
-	svc         review.Service
+	svc review.Service
 }
 
-func NewHandler(middlewares *middleware.Middlewares, svc review.Service) *Handler {
+func NewHandler(svc review.Service) *Handler {
 	return &Handler{
-		middlewares: middlewares,
-		svc:         svc,
+		svc: svc,
 	}
 }
 
