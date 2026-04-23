@@ -23,5 +23,6 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string) {
 		r.Use(middleware.AuthMiddleware(jwtSecret), middleware.AdminMiddleware())
 		r.Get("/", h.AdminGetOrders)
 		r.Post("/{id}/confirm", h.AdminConfirmOrder)
+		r.Delete("/{id}", h.AdminDeleteOrder)
 	})
 }

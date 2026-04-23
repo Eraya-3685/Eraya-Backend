@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"eraya/domain"
 	"eraya/user"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -53,8 +54,9 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		Role:     "buyer",
 	}
 
-	createdUser, err := h.svc.Signup(u, req.Password)
+	createdUser, err := h.svc.Signup(r.Context(), u, req.Password)
 	if err != nil {
+		slog.Error("Signup failed", "email", req.Email, "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -86,8 +88,9 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.svc.Login(req.Identifier, req.Password)
+	token, err := h.svc.Login(r.Context(), req.Identifier, req.Password)
 	if err != nil {
+		slog.Warn("Login failed", "identifier", req.Identifier, "error", err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
@@ -113,8 +116,9 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 	}
 
 	userID := userIDVal.(int64)
-	user, err := h.svc.GetProfile(userID)
+	user, err := h.svc.GetProfile(r.Context(), userID)
 	if err != nil || user == nil {
+		slog.Error("Failed to get profile", "id", userID, "error", err)
 		http.Error(w, "user not found", http.StatusNotFound)
 		return
 	}
@@ -154,8 +158,9 @@ func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.svc.UpdateRole(userID, req.Role)
+	err := h.svc.UpdateRole(r.Context(), userID, req.Role)
 	if err != nil {
+		slog.Error("Admin failed to update role", "target_id", userID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

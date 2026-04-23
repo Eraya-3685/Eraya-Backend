@@ -1,9 +1,10 @@
 package user
 
 import (
-	"errors"
+	"context"
 	"eraya/domain"
 	"eraya/util"
+	"errors"
 	"strings"
 )
 
@@ -19,7 +20,7 @@ func NewService(repo UserRepo, jwtSecret string) Service {
 	}
 }
 
-func (s *service) Signup(user *domain.User, password string) (*domain.User, error) {
+func (s *service) Signup(ctx context.Context, user *domain.User, password string) (*domain.User, error) {
 	if user.Email == "" || password == "" {
 		return nil, errors.New("email and password are required")
 	}
@@ -32,14 +33,14 @@ func (s *service) Signup(user *domain.User, password string) (*domain.User, erro
 		user.Phone = &normalized
 
 		// Pre-check duplicate phone
-		existingPhone, _ := s.repo.FindByEmailOrPhone(*user.Phone)
+		existingPhone, _ := s.repo.FindByEmailOrPhone(ctx, *user.Phone)
 		if existingPhone != nil {
 			return nil, errors.New("phone number already exists")
 		}
 	}
 
 	// Pre-check duplicate email
-	existingEmail, _ := s.repo.FindByEmail(user.Email)
+	existingEmail, _ := s.repo.FindByEmail(ctx, user.Email)
 	if existingEmail != nil {
 		return nil, errors.New("email already exists")
 	}
@@ -50,17 +51,17 @@ func (s *service) Signup(user *domain.User, password string) (*domain.User, erro
 	}
 	user.PasswordHash = hashedPassword
 
-	return s.repo.Create(user)
+	return s.repo.Create(ctx, user)
 }
 
-func (s *service) Login(identifier, password string) (string, error) {
+func (s *service) Login(ctx context.Context, identifier, password string) (string, error) {
 	// Try to normalize in case it's a phone number
 	normalizedIdentifier := identifier
 	if !strings.Contains(identifier, "@") {
 		normalizedIdentifier = util.NormalizePhone(identifier)
 	}
 
-	user, err := s.repo.FindByEmailOrPhone(normalizedIdentifier)
+	user, err := s.repo.FindByEmailOrPhone(ctx, normalizedIdentifier)
 	if err != nil || user == nil {
 		return "", errors.New("invalid identifier or password")
 	}
@@ -77,10 +78,10 @@ func (s *service) Login(identifier, password string) (string, error) {
 	return token, nil
 }
 
-func (s *service) GetProfile(userID int64) (*domain.User, error) {
-	return s.repo.FindByID(userID)
+func (s *service) GetProfile(ctx context.Context, userID int64) (*domain.User, error) {
+	return s.repo.FindByID(ctx, userID)
 }
 
-func (s *service) UpdateRole(userID int64, role string) error {
-	return s.repo.UpdateRole(userID, role)
+func (s *service) UpdateRole(ctx context.Context, userID int64, role string) error {
+	return s.repo.UpdateRole(ctx, userID, role)
 }

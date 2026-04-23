@@ -3,6 +3,7 @@ package review
 import (
 	"encoding/json"
 	"eraya/review"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -51,8 +52,9 @@ func (h *Handler) CreateReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rev, err := h.svc.CreateReview(userID, req.ProductID, req.Rating, req.Comment)
+	rev, err := h.svc.CreateReview(r.Context(), userID, req.ProductID, req.Rating, req.Comment)
 	if err != nil {
+		slog.Error("Failed to create review", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -74,8 +76,9 @@ func (h *Handler) GetProductReviews(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "productId")
 	productID, _ := strconv.ParseInt(idStr, 10, 64)
 
-	reviews, err := h.svc.GetProductReviews(productID)
+	reviews, err := h.svc.GetProductReviews(r.Context(), productID)
 	if err != nil {
+		slog.Error("Failed to get product reviews", "product_id", productID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -83,3 +86,26 @@ func (h *Handler) GetProductReviews(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(reviews)
 }
+
+// DeleteReview godoc
+// @Summary Delete a review
+// @Description Remove a review (admin only).
+// @Tags reviews
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Review ID"
+// @Success 200 {string} string "OK"
+// @Router /reviews/{id} [delete]
+func (h *Handler) DeleteReview(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+
+	if err := h.svc.DeleteReview(r.Context(), id); err != nil {
+		slog.Error("Failed to delete review", "id", id, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Review deleted successfully"))
+}
+

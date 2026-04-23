@@ -6,7 +6,7 @@ import (
 	"eraya/infra/storage"
 	"eraya/product"
 	"eraya/util"
-	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -46,6 +46,7 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	// 10MB max memory
 	err := r.ParseMultipartForm(10 << 20)
 	if err != nil {
+		slog.Error("Failed to parse multipart form", "error", err)
 		http.Error(w, "failed to parse multipart form", http.StatusBadRequest)
 		return
 	}
@@ -82,6 +83,7 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	for i, fileHeader := range files {
 		file, err := fileHeader.Open()
 		if err != nil {
+			slog.Error("Failed to open file", "filename", fileHeader.Filename, "error", err)
 			continue
 		}
 		defer file.Close()
@@ -89,7 +91,7 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 		// Upload to Supabase in 'products' folder
 		url, err := h.storage.UploadFile("products", fileHeader.Filename, file, fileHeader.Header.Get("Content-Type"))
 		if err != nil {
-			fmt.Printf("Upload failed: %v\n", err)
+			slog.Error("Upload failed", "filename", fileHeader.Filename, "error", err)
 			continue
 		}
 
@@ -99,12 +101,13 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	created, err := h.svc.CreateProduct(p)
+	created, err := h.svc.CreateProduct(r.Context(), p)
 	if err != nil {
 		// Cleanup uploaded images if DB fails
 		for _, img := range p.Images {
 			go h.storage.DeleteFile(img.ImageURL)
 		}
+		slog.Error("Failed to create product", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -137,8 +140,9 @@ func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	products, count, err := h.svc.GetProducts(page, limit)
+	products, count, err := h.svc.GetProducts(r.Context(), page, limit)
 	if err != nil {
+		slog.Error("Failed to list products", "error", err)
 		util.SendError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
@@ -157,8 +161,9 @@ func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 // @Router /products/{slug} [get]
 func (h *Handler) GetProduct(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
-	product, err := h.svc.GetProductBySlug(slug)
+	product, err := h.svc.GetProductBySlug(r.Context(), slug)
 	if err != nil {
+		slog.Warn("Product not found", "slug", slug)
 		http.Error(w, "product not found", http.StatusNotFound)
 		return
 	}
@@ -187,7 +192,8 @@ func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	p.ID = id
 
-	if err := h.svc.UpdateProduct(&p); err != nil {
+	if err := h.svc.UpdateProduct(r.Context(), &p); err != nil {
+		slog.Error("Failed to update product", "id", id, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -209,13 +215,15 @@ func (h *Handler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 
 	// Fetch product first to get image URLs for cleanup
-	p, err := h.svc.GetProductByID(id)
+	p, err := h.svc.GetProductByID(r.Context(), id)
 	if err != nil {
+		slog.Warn("Attempted to delete non-existent product", "id", id)
 		http.Error(w, "Product not found", http.StatusNotFound)
 		return
 	}
 
-	if err := h.svc.DeleteProduct(id); err != nil {
+	if err := h.svc.DeleteProduct(r.Context(), id); err != nil {
+		slog.Error("Failed to delete product", "id", id, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

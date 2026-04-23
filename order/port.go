@@ -1,28 +1,33 @@
 package order
 
-import "eraya/domain"
+import (
+	"context"
+	"eraya/domain"
+)
 
 type Service interface {
-	AddToCart(userID, productID int64, quantity int) error
-	GetCart(userID int64) ([]*domain.CartItem, error)
-	Checkout(userID int64, paymentMethod, shippingAddress string) (*domain.Order, error)
-	GetOrders(userID int64) ([]*domain.Order, error)
+	AddToCart(ctx context.Context, userID, productID int64, quantity int) error
+	GetCart(ctx context.Context, userID int64) ([]*domain.CartItem, error)
+	Checkout(ctx context.Context, userID int64, paymentMethod, shippingAddress string) (*domain.Order, error)
+	GetOrders(ctx context.Context, userID int64) ([]*domain.Order, error)
 
 	// Admin
-	AdminGetAllOrders() ([]*domain.Order, error)
-	AdminConfirmOrder(orderID int64) error
+	AdminGetAllOrders(ctx context.Context) ([]*domain.Order, error)
+	AdminConfirmOrder(ctx context.Context, orderID int64) error
+	AdminDeleteOrder(ctx context.Context, id int64) error
 }
 
 type CartRepo interface {
-	Add(item *domain.CartItem) error
-	List(userID int64) ([]*domain.CartItem, error)
-	Clear(userID int64) error
+	Add(ctx context.Context, item *domain.CartItem) error
+	List(ctx context.Context, userID int64) ([]*domain.CartItem, error)
+	Clear(ctx context.Context, userID int64) error
 }
 
 type OrderRepo interface {
-	Create(order *domain.Order, items []*domain.OrderItem) (*domain.Order, error)
-	ListByUser(userID int64) ([]*domain.Order, error)
-	ListAll() ([]*domain.Order, error)
-	FindByID(id int64) (*domain.Order, error)
-	UpdateStatus(id int64, status, paymentStatus string) error
+	Create(ctx context.Context, order *domain.Order, items []*domain.OrderItem) (*domain.Order, error)
+	ListByUser(ctx context.Context, userID int64) ([]*domain.Order, error)
+	ListAll(ctx context.Context) ([]*domain.Order, error)
+	FindByID(ctx context.Context, id int64) (*domain.Order, error)
+	UpdateStatus(ctx context.Context, id int64, status, paymentStatus string) error
+	Delete(ctx context.Context, id int64) error
 }

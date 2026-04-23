@@ -1,11 +1,12 @@
 package order
 
 import (
+	"context"
 	"eraya/domain"
 	"eraya/product"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -26,21 +27,21 @@ func NewService(cartRepo CartRepo, orderRepo OrderRepo, productSvc product.Servi
 	}
 }
 
-func (s *service) AddToCart(userID, productID int64, quantity int) error {
+func (s *service) AddToCart(ctx context.Context, userID, productID int64, quantity int) error {
 	item := &domain.CartItem{
 		UserID:    userID,
 		ProductID: productID,
 		Quantity:  quantity,
 	}
-	return s.cartRepo.Add(item)
+	return s.cartRepo.Add(ctx, item)
 }
 
-func (s *service) GetCart(userID int64) ([]*domain.CartItem, error) {
-	return s.cartRepo.List(userID)
+func (s *service) GetCart(ctx context.Context, userID int64) ([]*domain.CartItem, error) {
+	return s.cartRepo.List(ctx, userID)
 }
 
-func (s *service) Checkout(userID int64, paymentMethod, shippingAddress string) (*domain.Order, error) {
-	cartItems, err := s.cartRepo.List(userID)
+func (s *service) Checkout(ctx context.Context, userID int64, paymentMethod, shippingAddress string) (*domain.Order, error) {
+	cartItems, err := s.cartRepo.List(ctx, userID)
 	if err != nil || len(cartItems) == 0 {
 		return nil, errors.New("cart is empty")
 	}
@@ -48,12 +49,12 @@ func (s *service) Checkout(userID int64, paymentMethod, shippingAddress string) 
 	var total float64
 	var orderItems []*domain.OrderItem
 	var mu sync.Mutex
-	g := new(errgroup.Group)
+	g, gCtx := errgroup.WithContext(ctx)
 
 	for _, item := range cartItems {
 		item := item // Capture for closure
 		g.Go(func() error {
-			p, err := s.productSvc.GetProductByID(item.ProductID)
+			p, err := s.productSvc.GetProductByID(gCtx, item.ProductID)
 			if err != nil {
 				return fmt.Errorf("product not found: %d", item.ProductID)
 			}
@@ -88,38 +89,42 @@ func (s *service) Checkout(userID int64, paymentMethod, shippingAddress string) 
 		ShippingAddress: shippingAddress,
 	}
 
-	createdOrder, err := s.orderRepo.Create(order, orderItems)
+	createdOrder, err := s.orderRepo.Create(ctx, order, orderItems)
 	if err != nil {
 		return nil, err
 	}
 
 	// Clear cart after successful order
-	s.cartRepo.Clear(userID)
+	s.cartRepo.Clear(ctx, userID)
 
 	if paymentMethod == "bKash" {
 		// Auto confirm
-		s.AdminConfirmOrder(createdOrder.ID)
+		s.AdminConfirmOrder(ctx, createdOrder.ID)
 	}
 
 	return createdOrder, nil
 }
 
-func (s *service) GetOrders(userID int64) ([]*domain.Order, error) {
-	return s.orderRepo.ListByUser(userID)
+func (s *service) GetOrders(ctx context.Context, userID int64) ([]*domain.Order, error) {
+	return s.orderRepo.ListByUser(ctx, userID)
 }
 
-func (s *service) AdminGetAllOrders() ([]*domain.Order, error) {
-	return s.orderRepo.ListAll()
+func (s *service) AdminGetAllOrders(ctx context.Context) ([]*domain.Order, error) {
+	return s.orderRepo.ListAll(ctx)
 }
 
-func (s *service) AdminConfirmOrder(orderID int64) error {
-	err := s.orderRepo.UpdateStatus(orderID, "confirmed", "paid") // If COD, confirmed means payment is expected later, but we simplify here.
+func (s *service) AdminConfirmOrder(ctx context.Context, orderID int64) error {
+	err := s.orderRepo.UpdateStatus(ctx, orderID, "confirmed", "paid")
 	if err == nil {
 		// Async notifications
 		go func() {
-			time.Sleep(1 * time.Second) // Simulate network delay
-			log.Printf("Email and SMS sent to user for Order ID: %d", orderID)
+			time.Sleep(1 * time.Second)
+			slog.Info("Email and SMS sent to user", "order_id", orderID)
 		}()
 	}
 	return err
+}
+
+func (s *service) AdminDeleteOrder(ctx context.Context, id int64) error {
+	return s.orderRepo.Delete(ctx, id)
 }

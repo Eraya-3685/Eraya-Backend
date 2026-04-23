@@ -1,16 +1,19 @@
 package chat
 
-import "eraya/domain"
+import (
+	"context"
+	"eraya/domain"
+)
 
 type Service interface {
-	SendMessage(senderID, receiverID int64, text string) (*domain.Message, error)
-	GetConversation(userID1, userID2 int64) ([]*domain.Message, error)
+	SendMessage(ctx context.Context, senderID, receiverID int64, text string) (*domain.Message, error)
+	GetConversation(ctx context.Context, userID1, userID2 int64) ([]*domain.Message, error)
 }
 
 type ChatRepo interface {
-	SaveMessage(msg *domain.Message) (*domain.Message, error)
-	GetConversationMessages(convID int64) ([]*domain.Message, error)
-	FindOrCreateConversation(user1, user2 int64) (*domain.Conversation, error)
+	SaveMessage(ctx context.Context, msg *domain.Message) (*domain.Message, error)
+	GetConversationMessages(ctx context.Context, convID int64) ([]*domain.Message, error)
+	FindOrCreateConversation(ctx context.Context, user1, user2 int64) (*domain.Conversation, error)
 }
 
 type ChatPubSub interface {

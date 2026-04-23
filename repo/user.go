@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"eraya/domain"
 	"eraya/user"
@@ -17,13 +18,13 @@ func NewUserRepo(db *sqlx.DB) user.UserRepo {
 	return &userRepo{db: db}
 }
 
-func (r *userRepo) Create(u *domain.User) (*domain.User, error) {
+func (r *userRepo) Create(ctx context.Context, u *domain.User) (*domain.User, error) {
 	query := `
 		INSERT INTO users (full_name, email, phone, password_hash, social_id, role, address)
 		VALUES (:full_name, :email, :phone, :password_hash, :social_id, :role, :address)
 		RETURNING id, created_at, is_active
 	`
-	rows, err := r.db.NamedQuery(query, u)
+	rows, err := r.db.NamedQueryContext(ctx, query, u)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user: %w", err)
 	}
@@ -38,10 +39,10 @@ func (r *userRepo) Create(u *domain.User) (*domain.User, error) {
 	return u, nil
 }
 
-func (r *userRepo) FindByEmail(email string) (*domain.User, error) {
+func (r *userRepo) FindByEmail(ctx context.Context, email string) (*domain.User, error) {
 	query := `SELECT * FROM users WHERE email = $1 LIMIT 1`
 	var u domain.User
-	err := r.db.Get(&u, query, email)
+	err := r.db.GetContext(ctx, &u, query, email)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -51,10 +52,10 @@ func (r *userRepo) FindByEmail(email string) (*domain.User, error) {
 	return &u, nil
 }
 
-func (r *userRepo) FindByEmailOrPhone(identifier string) (*domain.User, error) {
+func (r *userRepo) FindByEmailOrPhone(ctx context.Context, identifier string) (*domain.User, error) {
 	query := `SELECT * FROM users WHERE email = $1 OR phone = $1 LIMIT 1`
 	var u domain.User
-	err := r.db.Get(&u, query, identifier)
+	err := r.db.GetContext(ctx, &u, query, identifier)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -64,10 +65,10 @@ func (r *userRepo) FindByEmailOrPhone(identifier string) (*domain.User, error) {
 	return &u, nil
 }
 
-func (r *userRepo) FindByID(id int64) (*domain.User, error) {
+func (r *userRepo) FindByID(ctx context.Context, id int64) (*domain.User, error) {
 	query := `SELECT * FROM users WHERE id = $1 LIMIT 1`
 	var u domain.User
-	err := r.db.Get(&u, query, id)
+	err := r.db.GetContext(ctx, &u, query, id)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return nil, nil
@@ -77,8 +78,8 @@ func (r *userRepo) FindByID(id int64) (*domain.User, error) {
 	return &u, nil
 }
 
-func (r *userRepo) UpdateRole(id int64, role string) error {
+func (r *userRepo) UpdateRole(ctx context.Context, id int64, role string) error {
 	query := `UPDATE users SET role = $1 WHERE id = $2`
-	_, err := r.db.Exec(query, role, id)
+	_, err := r.db.ExecContext(ctx, query, role, id)
 	return err
 }

@@ -1,6 +1,7 @@
 package chat
 
 import (
+	"context"
 	"eraya/domain"
 	"fmt"
 )
@@ -17,8 +18,8 @@ func NewService(repo ChatRepo, pubsub ChatPubSub) Service {
 	}
 }
 
-func (s *service) SendMessage(senderID, receiverID int64, text string) (*domain.Message, error) {
-	conv, err := s.repo.FindOrCreateConversation(senderID, receiverID)
+func (s *service) SendMessage(ctx context.Context, senderID, receiverID int64, text string) (*domain.Message, error) {
+	conv, err := s.repo.FindOrCreateConversation(ctx, senderID, receiverID)
 	if err != nil {
 		return nil, err
 	}
@@ -29,7 +30,7 @@ func (s *service) SendMessage(senderID, receiverID int64, text string) (*domain.
 		MessageText:    &text,
 	}
 
-	savedMsg, err := s.repo.SaveMessage(msg)
+	savedMsg, err := s.repo.SaveMessage(ctx, msg)
 	if err != nil {
 		return nil, err
 	}
@@ -41,10 +42,10 @@ func (s *service) SendMessage(senderID, receiverID int64, text string) (*domain.
 	return savedMsg, nil
 }
 
-func (s *service) GetConversation(userID1, userID2 int64) ([]*domain.Message, error) {
-	conv, err := s.repo.FindOrCreateConversation(userID1, userID2)
+func (s *service) GetConversation(ctx context.Context, userID1, userID2 int64) ([]*domain.Message, error) {
+	conv, err := s.repo.FindOrCreateConversation(ctx, userID1, userID2)
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.GetConversationMessages(conv.ID)
+	return s.repo.GetConversationMessages(ctx, conv.ID)
 }

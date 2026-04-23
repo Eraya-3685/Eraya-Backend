@@ -20,8 +20,8 @@ func NewProductCache(rdb *redis.Client) product.ProductCache {
 
 const latestProductsKey = "latest_products"
 
-func (c *productCache) GetLatestProducts() ([]*domain.Product, error) {
-	val, err := c.rdb.Get(context.Background(), latestProductsKey).Result()
+func (c *productCache) GetLatestProducts(ctx context.Context) ([]*domain.Product, error) {
+	val, err := c.rdb.Get(ctx, latestProductsKey).Result()
 	if err != nil {
 		return nil, err
 	}
@@ -31,12 +31,12 @@ func (c *productCache) GetLatestProducts() ([]*domain.Product, error) {
 	return products, err
 }
 
-func (c *productCache) SetLatestProducts(products []*domain.Product) error {
+func (c *productCache) SetLatestProducts(ctx context.Context, products []*domain.Product) error {
 	data, err := json.Marshal(products)
 	if err != nil {
 		return err
 	}
 
 	// Cache for 10 minutes
-	return c.rdb.Set(context.Background(), latestProductsKey, data, 10*time.Minute).Err()
+	return c.rdb.Set(ctx, latestProductsKey, data, 10*time.Minute).Err()
 }

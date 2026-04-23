@@ -2,7 +2,7 @@ package chat
 
 import (
 	"eraya/chat"
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -42,8 +42,6 @@ func (h *WebSocketHandler) HandleConnections(w http.ResponseWriter, r *http.Requ
 	}
 	userID := userIDVal.(int64)
 
-	// In a real app, you might want to specify who you are chatting with via URL params
-	// e.g. /chat?with=2
 	withStr := r.URL.Query().Get("with")
 	var withID int64
 	if withStr != "" {
@@ -55,29 +53,29 @@ func (h *WebSocketHandler) HandleConnections(w http.ResponseWriter, r *http.Requ
 
 	ws, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
-		log.Printf("Failed to upgrade connection: %v", err)
+		slog.Error("Failed to upgrade connection", "error", err)
 		return
 	}
 	defer ws.Close()
 
-	log.Printf("User %d connected to chat with %d", userID, withID)
+	slog.Info("User connected to chat", "user_id", userID, "with_id", withID)
 
 	for {
 		var msg map[string]string
 		err := ws.ReadJSON(&msg)
 		if err != nil {
-			log.Printf("error reading from websocket: %v", err)
+			slog.Error("Error reading from websocket", "error", err)
 			break
 		}
 
 		text := msg["text"]
 		if text != "" {
-			_, err = h.svc.SendMessage(userID, withID, text)
+			_, err = h.svc.SendMessage(r.Context(), userID, withID, text)
 			if err != nil {
-				log.Printf("error sending message: %v", err)
+				slog.Error("Error sending message", "error", err)
 				ws.WriteJSON(map[string]string{"error": "Failed to send message"})
 			} else {
-				// Echo back to sender for immediate feedback
+				// Echo back to sender
 				ws.WriteJSON(map[string]string{
 					"status": "sent",
 					"text":   text,

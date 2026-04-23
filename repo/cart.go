@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"eraya/domain"
 	"eraya/order"
 
@@ -15,14 +16,13 @@ func NewCartRepo(db *sqlx.DB) order.CartRepo {
 	return &cartRepo{db: db}
 }
 
-func (r *cartRepo) Add(item *domain.CartItem) error {
-	// Simple add, normally we'd check if it exists and increment quantity
+func (r *cartRepo) Add(ctx context.Context, item *domain.CartItem) error {
 	query := `INSERT INTO cart_items (user_id, product_id, quantity) VALUES (:user_id, :product_id, :quantity)`
-	_, err := r.db.NamedExec(query, &item)
+	_, err := r.db.NamedExecContext(ctx, query, &item)
 	return err
 }
 
-func (r *cartRepo) List(userID int64) ([]*domain.CartItem, error) {
+func (r *cartRepo) List(ctx context.Context, userID int64) ([]*domain.CartItem, error) {
 	query := `
 		SELECT 
 			c.id, c.user_id, c.product_id, c.quantity,
@@ -35,12 +35,12 @@ func (r *cartRepo) List(userID int64) ([]*domain.CartItem, error) {
 		WHERE c.user_id = $1
 	`
 	var items []*domain.CartItem
-	err := r.db.Select(&items, query, userID)
+	err := r.db.SelectContext(ctx, &items, query, userID)
 	return items, err
 }
 
-func (r *cartRepo) Clear(userID int64) error {
+func (r *cartRepo) Clear(ctx context.Context, userID int64) error {
 	query := `DELETE FROM cart_items WHERE user_id = $1`
-	_, err := r.db.Exec(query, userID)
+	_, err := r.db.ExecContext(ctx, query, userID)
 	return err
 }

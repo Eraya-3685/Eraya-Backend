@@ -1,6 +1,7 @@
 package repo
 
 import (
+	"context"
 	"eraya/domain"
 	"eraya/review"
 	"fmt"
@@ -16,8 +17,8 @@ func NewReviewRepo(db *sqlx.DB) review.ReviewRepo {
 	return &reviewRepo{db: db}
 }
 
-func (r *reviewRepo) Create(rev *domain.Review) (*domain.Review, error) {
-	tx, err := r.db.Beginx()
+func (r *reviewRepo) Create(ctx context.Context, rev *domain.Review) (*domain.Review, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -27,7 +28,7 @@ func (r *reviewRepo) Create(rev *domain.Review) (*domain.Review, error) {
 		VALUES (:product_id, :user_id, :rating, :comment)
 		RETURNING id, created_at
 	`
-	rows, err := tx.NamedQuery(query, rev)
+	rows, err := sqlx.NamedQueryContext(ctx, tx, query, rev)
 	if err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("failed to create review: %w", err)
@@ -38,14 +39,13 @@ func (r *reviewRepo) Create(rev *domain.Review) (*domain.Review, error) {
 		rows.Scan(&rev.ID, &rev.CreatedAt)
 	}
 
-	// Trigger to update product average_rating and total_reviews could be here or DB trigger
 	updateProductQuery := `
 		UPDATE products 
 		SET total_reviews = total_reviews + 1, 
 			average_rating = ((average_rating * total_reviews) + $1) / (total_reviews + 1)
 		WHERE id = $2
 	`
-	_, err = tx.Exec(updateProductQuery, rev.Rating, rev.ProductID)
+	_, err = tx.ExecContext(ctx, updateProductQuery, rev.Rating, rev.ProductID)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
@@ -55,11 +55,52 @@ func (r *reviewRepo) Create(rev *domain.Review) (*domain.Review, error) {
 	return rev, err
 }
 
-func (r *reviewRepo) ListByProduct(productID int64) ([]*domain.Review, error) {
+func (r *reviewRepo) ListByProduct(ctx context.Context, productID int64) ([]*domain.Review, error) {
 	query := `SELECT * FROM reviews WHERE product_id = $1 ORDER BY created_at DESC`
 	var reviews []*domain.Review
-	err := r.db.Select(&reviews, query, productID)
+	err := r.db.SelectContext(ctx, &reviews, query, productID)
 	return reviews, err
+}
+
+func (r *reviewRepo) Delete(ctx context.Context, id int64) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// Fetch review first to get rating and product ID
+	var rev domain.Review
+	err = tx.GetContext(ctx, &rev, "SELECT * FROM reviews WHERE id = $1", id)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Delete review
+	_, err = tx.ExecContext(ctx, "DELETE FROM reviews WHERE id = $1", id)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// Update product rating stats
+	updateProductQuery := `
+		UPDATE products 
+		SET total_reviews = total_reviews - 1, 
+			average_rating = CASE 
+				WHEN total_reviews - 1 > 0 
+				THEN ((average_rating * total_reviews) - $1) / (total_reviews - 1)
+				ELSE 0 
+			END
+		WHERE id = $2
+	`
+	_, err = tx.ExecContext(ctx, updateProductQuery, rev.Rating, rev.ProductID)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	return tx.Commit()
 }
 
 // OrderVerifier Implementation
@@ -71,7 +112,7 @@ func NewOrderVerifier(db *sqlx.DB) review.OrderVerifier {
 	return &orderVerifier{db: db}
 }
 
-func (v *orderVerifier) HasDeliveredOrder(userID, productID int64) (bool, error) {
+func (v *orderVerifier) HasDeliveredOrder(ctx context.Context, userID, productID int64) (bool, error) {
 	query := `
 		SELECT COUNT(o.id) 
 		FROM orders o
@@ -79,6 +120,6 @@ func (v *orderVerifier) HasDeliveredOrder(userID, productID int64) (bool, error)
 		WHERE o.user_id = $1 AND oi.product_id = $2 AND o.order_status = 'delivered'
 	`
 	var count int
-	err := v.db.Get(&count, query, userID, productID)
+	err := v.db.GetContext(ctx, &count, query, userID, productID)
 	return count > 0, err
 }

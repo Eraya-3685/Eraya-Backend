@@ -1,20 +1,21 @@
 package user
 
 import (
+	"context"
 	"eraya/domain"
 )
 
 type Service interface {
-	Signup(user *domain.User, password string) (*domain.User, error)
-	Login(identifier, password string) (string, error)
-	GetProfile(userID int64) (*domain.User, error)
-	UpdateRole(userID int64, role string) error
+	Signup(ctx context.Context, user *domain.User, password string) (*domain.User, error)
+	Login(ctx context.Context, identifier, password string) (string, error)
+	GetProfile(ctx context.Context, userID int64) (*domain.User, error)
+	UpdateRole(ctx context.Context, userID int64, role string) error
 }
 
 type UserRepo interface {
-	Create(user *domain.User) (*domain.User, error)
-	FindByEmail(email string) (*domain.User, error)
-	FindByEmailOrPhone(identifier string) (*domain.User, error)
-	FindByID(id int64) (*domain.User, error)
-	UpdateRole(id int64, role string) error
+	Create(ctx context.Context, user *domain.User) (*domain.User, error)
+	FindByEmail(ctx context.Context, email string) (*domain.User, error)
+	FindByEmailOrPhone(ctx context.Context, identifier string) (*domain.User, error)
+	FindByID(ctx context.Context, id int64) (*domain.User, error)
+	UpdateRole(ctx context.Context, id int64, role string) error
 }

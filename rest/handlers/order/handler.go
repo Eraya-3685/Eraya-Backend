@@ -3,6 +3,7 @@ package order
 import (
 	"encoding/json"
 	"eraya/order"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -50,8 +51,9 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.svc.AddToCart(userID, req.ProductID, req.Quantity)
+	err := h.svc.AddToCart(r.Context(), userID, req.ProductID, req.Quantity)
 	if err != nil {
+		slog.Error("Failed to add to cart", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -77,8 +79,9 @@ func (h *Handler) GetCart(w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Context().Value("user_id").(int64)
 
-	items, err := h.svc.GetCart(userID)
+	items, err := h.svc.GetCart(r.Context(), userID)
 	if err != nil {
+		slog.Error("Failed to get cart", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -118,8 +121,9 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	order, err := h.svc.Checkout(userID, req.PaymentMethod, req.ShippingAddress)
+	order, err := h.svc.Checkout(r.Context(), userID, req.PaymentMethod, req.ShippingAddress)
 	if err != nil {
+		slog.Error("Checkout failed", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -147,8 +151,9 @@ func (h *Handler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 
 	userID := r.Context().Value("user_id").(int64)
 
-	orders, err := h.svc.GetOrders(userID)
+	orders, err := h.svc.GetOrders(r.Context(), userID)
 	if err != nil {
+		slog.Error("Failed to get orders", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -167,8 +172,9 @@ func (h *Handler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 // @Failure 403 {string} string "Forbidden"
 // @Router /admin/orders [get]
 func (h *Handler) AdminGetOrders(w http.ResponseWriter, r *http.Request) {
-	orders, err := h.svc.AdminGetAllOrders()
+	orders, err := h.svc.AdminGetAllOrders(r.Context())
 	if err != nil {
+		slog.Error("Admin failed to get orders", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -191,11 +197,38 @@ func (h *Handler) AdminConfirmOrder(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	orderID, _ := strconv.ParseInt(idStr, 10, 64)
 
-	err := h.svc.AdminConfirmOrder(orderID)
+	err := h.svc.AdminConfirmOrder(r.Context(), orderID)
 	if err != nil {
+		slog.Error("Admin failed to confirm order", "id", orderID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 }
+
+// AdminDeleteOrder godoc
+// @Summary Delete an order (Admin)
+// @Description Remove an order from the system (admin only).
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Order ID"
+// @Success 200 {string} string "OK"
+// @Failure 403 {string} string "Forbidden"
+// @Router /admin/orders/{id} [delete]
+func (h *Handler) AdminDeleteOrder(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	orderID, _ := strconv.ParseInt(idStr, 10, 64)
+
+	err := h.svc.AdminDeleteOrder(r.Context(), orderID)
+	if err != nil {
+		slog.Error("Admin failed to delete order", "id", orderID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Order deleted successfully"))
+}
+
