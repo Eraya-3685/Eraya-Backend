@@ -1,4 +1,4 @@
--- +migrate Up
+
 -- 1. User & Identity
 CREATE TABLE IF NOT EXISTS users (
     id BIGSERIAL PRIMARY KEY,
