@@ -11,6 +11,7 @@ type User struct {
 	SocialID     *string   `json:"social_id" db:"social_id"`
 	Role         string    `json:"role" db:"role"`
 	Address      *string   `json:"address" db:"address"`
+	AvatarURL    *string   `json:"avatar_url" db:"avatar_url"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	IsActive     bool      `json:"is_active" db:"is_active"`
 }

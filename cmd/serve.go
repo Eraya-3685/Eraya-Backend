@@ -62,8 +62,8 @@ func Serve() {
 	storageService := storage.NewStorageService(cnf.Supabase)
 
 	userRepo := repo.NewUserRepo(dbCon)
-	userService := user.NewService(userRepo, cnf.JwtSecretKey)
-	userHandler := user_handler.NewHandler(userService)
+	userService := user.NewService(userRepo, cnf.JwtSecretKey, storageService)
+	userHandler := user_handler.NewHandler(userService, storageService)
 
 	productRepo := repo.NewProductRepo(dbCon)
 	productCache := repo.NewProductCache(redisDB)

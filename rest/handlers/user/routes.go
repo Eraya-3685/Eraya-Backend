@@ -13,6 +13,8 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string) {
 
 		// Protected routes
 		r.With(middleware.AuthMiddleware(jwtSecret)).Get("/profile", h.GetProfile)
+		r.With(middleware.AuthMiddleware(jwtSecret)).Patch("/profile", h.UpdateProfile)
+		r.With(middleware.AuthMiddleware(jwtSecret)).Patch("/avatar", h.UploadAvatar)
 
 		// Admin only
 		r.With(

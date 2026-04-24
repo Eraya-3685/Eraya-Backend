@@ -3,7 +3,8 @@ package util
 import "golang.org/x/crypto/bcrypt"
 
 func HashPassword(password string) (string, error) {
-	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
+	// Cost 12 = ~250ms — industry standard (cost 14 = ~1-2s, unnecessarily slow for an API)
+	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 12)
 	return string(bytes), err
 }
 

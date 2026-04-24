@@ -83,3 +83,17 @@ func (r *userRepo) UpdateRole(ctx context.Context, id int64, role string) error 
 	_, err := r.db.ExecContext(ctx, query, role, id)
 	return err
 }
+
+// UpdateProfile updates full_name, address, phone, and avatar_url (email is immutable)
+func (r *userRepo) UpdateProfile(ctx context.Context, id int64, fullName string, phone *string, address *string) error {
+	query := `UPDATE users SET full_name = $1, phone = $2, address = $3 WHERE id = $4`
+	_, err := r.db.ExecContext(ctx, query, fullName, phone, address, id)
+	return err
+}
+
+// UpdateAvatar sets only the avatar_url for a user
+func (r *userRepo) UpdateAvatar(ctx context.Context, id int64, avatarURL string) error {
+	query := `UPDATE users SET avatar_url = $1 WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, avatarURL, id)
+	return err
+}

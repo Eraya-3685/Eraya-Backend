@@ -3,6 +3,7 @@ package user
 import (
 	"encoding/json"
 	"eraya/domain"
+	"eraya/infra/storage"
 	"eraya/user"
 	"log/slog"
 	"net/http"
@@ -12,12 +13,14 @@ import (
 )
 
 type Handler struct {
-	svc user.Service
+	svc     user.Service
+	storage *storage.StorageService
 }
 
-func NewHandler(svc user.Service) *Handler {
+func NewHandler(svc user.Service, storageService *storage.StorageService) *Handler {
 	return &Handler{
-		svc: svc,
+		svc:     svc,
+		storage: storageService,
 	}
 }
 
@@ -88,7 +91,8 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.svc.Login(r.Context(), req.Identifier, req.Password)
+	// Returns token + full user object in one shot — no second /profile call needed
+	token, user, err := h.svc.Login(r.Context(), req.Identifier, req.Password)
 	if err != nil {
 		slog.Warn("Login failed", "identifier", req.Identifier, "error", err)
 		http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -96,7 +100,10 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{"token": token})
+	json.NewEncoder(w).Encode(map[string]any{
+		"token": token,
+		"user":  user,
+	})
 }
 
 // GetProfile godoc
@@ -123,6 +130,49 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
+
+type updateProfileReq struct {
+	FullName string  `json:"full_name"`
+	Phone    *string `json:"phone"`
+	Address  *string `json:"address"`
+}
+
+// UpdateProfile godoc
+// @Summary Update user profile
+// @Description Update the logged-in user's name, phone, and address. Email cannot be changed.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body updateProfileReq true "Profile fields to update"
+// @Success 200 {object} domain.User
+// @Failure 400 {string} string "Bad Request"
+// @Router /users/profile [patch]
+func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
+	userIDVal := r.Context().Value("user_id")
+	if userIDVal == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := userIDVal.(int64)
+
+	var req updateProfileReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := h.svc.UpdateProfile(r.Context(), userID, req.FullName, req.Phone, req.Address); err != nil {
+		slog.Error("Failed to update profile", "id", userID, "error", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Return updated profile
+	user, _ := h.svc.GetProfile(r.Context(), userID)
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(user)
 }
@@ -166,4 +216,51 @@ func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+// UploadAvatar godoc
+// @Summary Upload or update user avatar
+// @Description Upload a profile photo (max 5MB). Stores to Supabase and saves URL to DB.
+// @Tags users
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param avatar formData file true "Avatar image file"
+// @Success 200 {object} map[string]string
+// @Router /users/avatar [patch]
+func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
+	userIDVal := r.Context().Value("user_id")
+	if userIDVal == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := userIDVal.(int64)
+
+	// Max 5 MB
+	if err := r.ParseMultipartForm(5 << 20); err != nil {
+		http.Error(w, "file too large (max 5MB)", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("avatar")
+	if err != nil {
+		http.Error(w, "avatar file is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	contentType := header.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/jpeg"
+	}
+
+	url, err := h.svc.UploadAvatar(r.Context(), userID, header.Filename, file, contentType)
+	if err != nil {
+		slog.Error("Failed to upload avatar", "user_id", userID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"avatar_url": url})
 }
