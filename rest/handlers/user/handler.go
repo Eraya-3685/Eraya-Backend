@@ -5,6 +5,7 @@ import (
 	"eraya/domain"
 	"eraya/infra/storage"
 	"eraya/user"
+	"eraya/util"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -136,6 +137,7 @@ func (h *Handler) GetProfile(w http.ResponseWriter, r *http.Request) {
 
 type updateProfileReq struct {
 	FullName string  `json:"full_name"`
+	Email    *string `json:"email"`
 	Phone    *string `json:"phone"`
 	Address  *string `json:"address"`
 }
@@ -165,7 +167,7 @@ func (h *Handler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.svc.UpdateProfile(r.Context(), userID, req.FullName, req.Phone, req.Address); err != nil {
+	if err := h.svc.UpdateProfile(r.Context(), userID, req.FullName, req.Email, req.Phone, req.Address); err != nil {
 		slog.Error("Failed to update profile", "id", userID, "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -236,9 +238,9 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	userID := userIDVal.(int64)
 
-	// Max 5 MB
+	// Max 2MB per file check, but we keep ParseMultipartForm slightly higher
 	if err := r.ParseMultipartForm(5 << 20); err != nil {
-		http.Error(w, "file too large (max 5MB)", http.StatusBadRequest)
+		http.Error(w, "invalid multipart form", http.StatusBadRequest)
 		return
 	}
 
@@ -249,9 +251,16 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
+	// Validate file type and size
 	contentType := header.Header.Get("Content-Type")
-	if contentType == "" {
-		contentType = "image/jpeg"
+	if err := util.ValidateImage(contentType); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if err := util.ValidateImageSize(header.Size, 2); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
 	}
 
 	url, err := h.svc.UploadAvatar(r.Context(), userID, header.Filename, file, contentType)

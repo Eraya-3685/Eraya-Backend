@@ -84,10 +84,15 @@ func (r *userRepo) UpdateRole(ctx context.Context, id int64, role string) error 
 	return err
 }
 
-// UpdateProfile updates full_name, address, phone, and avatar_url (email is immutable)
-func (r *userRepo) UpdateProfile(ctx context.Context, id int64, fullName string, phone *string, address *string) error {
-	query := `UPDATE users SET full_name = $1, phone = $2, address = $3 WHERE id = $4`
-	_, err := r.db.ExecContext(ctx, query, fullName, phone, address, id)
+// UpdateProfile updates user metadata. Email is included but usually restricted in service layer.
+func (r *userRepo) UpdateProfile(ctx context.Context, id int64, fullName string, email *string, phone *string, address *string) error {
+	query := `UPDATE users SET 
+		full_name = $1, 
+		email = COALESCE($2, email), 
+		phone = $3, 
+		address = $4 
+	WHERE id = $5`
+	_, err := r.db.ExecContext(ctx, query, fullName, email, phone, address, id)
 	return err
 }
 

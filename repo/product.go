@@ -58,11 +58,20 @@ func (r *productRepo) Create(ctx context.Context, p *domain.Product) (*domain.Pr
 	return p, tx.Commit()
 }
 
-func (r *productRepo) List(ctx context.Context, page, limit int64) ([]*domain.Product, error) {
+func (r *productRepo) List(ctx context.Context, page, limit int64, search string) ([]*domain.Product, error) {
 	offset := (page - 1) * limit
-	query := `SELECT * FROM products WHERE is_active = true ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	query := `SELECT * FROM products WHERE is_active = true`
+	args := []interface{}{limit, offset}
+
+	if search != "" {
+		query += ` AND (name ILIKE $3 OR description ILIKE $3)`
+		args = append(args, "%"+search+"%")
+	}
+
+	query += ` ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+
 	var products []*domain.Product
-	err := r.db.SelectContext(ctx, &products, query, limit, offset)
+	err := r.db.SelectContext(ctx, &products, query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -85,10 +94,16 @@ func (r *productRepo) List(ctx context.Context, page, limit int64) ([]*domain.Pr
 	return products, nil
 }
 
-func (r *productRepo) Count(ctx context.Context) (int64, error) {
+func (r *productRepo) Count(ctx context.Context, search string) (int64, error) {
 	query := `SELECT COUNT(*) FROM products WHERE is_active = true`
+	var args []interface{}
+	if search != "" {
+		query += ` AND (name ILIKE $1 OR description ILIKE $1)`
+		args = append(args, "%"+search+"%")
+	}
+
 	var count int64
-	err := r.db.GetContext(ctx, &count, query)
+	err := r.db.GetContext(ctx, &count, query, args...)
 	return count, err
 }
 
@@ -127,7 +142,14 @@ func (r *productRepo) FindByID(ctx context.Context, id int64) (*domain.Product, 
 	return &p, nil
 }
 
-func (r *productRepo) Update(ctx context.Context, p *domain.Product) error {
+func (r *productRepo) Update(ctx context.Context, p *domain.Product) ([]string, error) {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// 1. Update main product info
 	query := `
 		UPDATE products 
 		SET name = :name, description = :description, base_price = :base_price, 
@@ -135,11 +157,72 @@ func (r *productRepo) Update(ctx context.Context, p *domain.Product) error {
 		    stock_count = :stock_count, slug = :slug, is_active = :is_active
 		WHERE id = :id
 	`
-	_, err := r.db.NamedExecContext(ctx, query, p)
-	return err
+	_, err = tx.NamedExecContext(ctx, query, p)
+	if err != nil {
+		return nil, err
+	}
+
+	var orphanedURLs []string
+
+	// 2. Sync images if provided
+	if p.Images != nil {
+		// Get existing images from DB
+		var currentImages []domain.ProductImage
+		err = tx.SelectContext(ctx, &currentImages, "SELECT * FROM product_images WHERE product_id = $1", p.ID)
+		if err != nil {
+			return nil, err
+		}
+
+		// Identify images to delete
+		newImageURLs := make(map[string]bool)
+		for _, img := range p.Images {
+			newImageURLs[img.ImageURL] = true
+		}
+
+		for _, oldImg := range currentImages {
+			if !newImageURLs[oldImg.ImageURL] {
+				orphanedURLs = append(orphanedURLs, oldImg.ImageURL)
+				_, err = tx.ExecContext(ctx, "DELETE FROM product_images WHERE id = $1", oldImg.ID)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+
+		// Add new images (only those not already in DB)
+		existingURLs := make(map[string]bool)
+		for _, oldImg := range currentImages {
+			existingURLs[oldImg.ImageURL] = true
+		}
+
+		for _, img := range p.Images {
+			if !existingURLs[img.ImageURL] {
+				img.ProductID = p.ID
+				_, err = tx.NamedExecContext(ctx, `INSERT INTO product_images (product_id, image_url, is_primary) VALUES (:product_id, :image_url, :is_primary)`, img)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	return orphanedURLs, tx.Commit()
 }
 
 func (r *productRepo) Delete(ctx context.Context, id int64) error {
 	_, err := r.db.ExecContext(ctx, "DELETE FROM products WHERE id = $1", id)
 	return err
+}
+
+// Categories
+func (r *productRepo) CreateCategory(ctx context.Context, c *domain.Category) (*domain.Category, error) {
+	query := `INSERT INTO categories (name) VALUES ($1) RETURNING id`
+	err := r.db.QueryRowContext(ctx, query, c.Name).Scan(&c.ID)
+	return c, err
+}
+
+func (r *productRepo) ListCategories(ctx context.Context) ([]*domain.Category, error) {
+	var categories []*domain.Category
+	err := r.db.SelectContext(ctx, &categories, "SELECT * FROM categories ORDER BY name ASC")
+	return categories, err
 }

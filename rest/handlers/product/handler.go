@@ -6,6 +6,7 @@ import (
 	"eraya/infra/storage"
 	"eraya/product"
 	"eraya/util"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -88,6 +89,20 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 		}
 		defer file.Close()
 
+		// Validate file type and size
+		contentType := fileHeader.Header.Get("Content-Type")
+		if err := util.ValidateImage(contentType); err != nil {
+			slog.Error("Invalid image format", "filename", fileHeader.Filename, "error", err)
+			file.Close()
+			continue
+		}
+
+		if err := util.ValidateImageSize(fileHeader.Size, 2); err != nil {
+			slog.Error("Image too large", "filename", fileHeader.Filename, "size", fileHeader.Size)
+			http.Error(w, fmt.Sprintf("File %s is too large. Max 2MB allowed.", fileHeader.Filename), http.StatusBadRequest)
+			return
+		}
+
 		// Upload to Supabase in 'products' folder
 		url, err := h.storage.UploadFile("products", fileHeader.Filename, file, fileHeader.Header.Get("Content-Type"))
 		if err != nil {
@@ -124,11 +139,13 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 // @Produce json
 // @Param page query int false "Page number" default(1)
 // @Param limit query int false "Items per page" default(10)
+// @Param search query string false "Search products"
 // @Success 200 {object} util.PaginatedData
 // @Router /products [get]
 func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 	pageAsStr := r.URL.Query().Get("page")
 	limitAsStr := r.URL.Query().Get("limit")
+	search := r.URL.Query().Get("search")
 
 	page, _ := strconv.ParseInt(pageAsStr, 10, 64)
 	if page <= 0 {
@@ -140,7 +157,7 @@ func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	products, count, err := h.svc.GetProducts(r.Context(), page, limit)
+	products, count, err := h.svc.GetProducts(r.Context(), page, limit, search)
 	if err != nil {
 		slog.Error("Failed to list products", "error", err)
 		util.SendError(w, http.StatusInternalServerError, "Internal server error")
@@ -192,10 +209,16 @@ func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 	}
 	p.ID = id
 
-	if err := h.svc.UpdateProduct(r.Context(), &p); err != nil {
+	orphanedURLs, err := h.svc.UpdateProduct(r.Context(), &p)
+	if err != nil {
 		slog.Error("Failed to update product", "id", id, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
+	}
+
+	// Async cleanup of removed images
+	for _, url := range orphanedURLs {
+		go h.storage.DeleteFile(url)
 	}
 
 	w.WriteHeader(http.StatusOK)
@@ -237,3 +260,48 @@ func (h *Handler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Product deleted successfully"))
 }
 
+// CreateCategory godoc
+// @Summary Create a new category
+// @Description Add a new category (admin only).
+// @Tags categories
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param category body domain.Category true "Category Details"
+// @Success 201 {object} domain.Category
+// @Router /categories [post]
+func (h *Handler) CreateCategory(w http.ResponseWriter, r *http.Request) {
+	var c domain.Category
+	if err := json.NewDecoder(r.Body).Decode(&c); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	created, err := h.svc.CreateCategory(r.Context(), &c)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	json.NewEncoder(w).Encode(created)
+}
+
+// ListCategories godoc
+// @Summary List all categories
+// @Description Retrieve a list of all product categories.
+// @Tags categories
+// @Produce json
+// @Success 200 {array} domain.Category
+// @Router /categories [get]
+func (h *Handler) ListCategories(w http.ResponseWriter, r *http.Request) {
+	categories, err := h.svc.ListCategories(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(categories)
+}

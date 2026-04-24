@@ -27,13 +27,13 @@ func (s *service) CreateProduct(ctx context.Context, product *domain.Product) (*
 	return p, err
 }
 
-func (s *service) GetProducts(ctx context.Context, page, limit int64) ([]*domain.Product, int64, error) {
-	products, err := s.repo.List(ctx, page, limit)
+func (s *service) GetProducts(ctx context.Context, page, limit int64, search string) ([]*domain.Product, int64, error) {
+	products, err := s.repo.List(ctx, page, limit, search)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	count, err := s.repo.Count(ctx)
+	count, err := s.repo.Count(ctx, search)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -49,12 +49,12 @@ func (s *service) GetProductByID(ctx context.Context, id int64) (*domain.Product
 	return s.repo.FindByID(ctx, id)
 }
 
-func (s *service) UpdateProduct(ctx context.Context, p *domain.Product) error {
-	err := s.repo.Update(ctx, p)
+func (s *service) UpdateProduct(ctx context.Context, p *domain.Product) ([]string, error) {
+	orphanedURLs, err := s.repo.Update(ctx, p)
 	if err == nil {
 		go s.invalidateCache(context.Background())
 	}
-	return err
+	return orphanedURLs, err
 }
 
 func (s *service) DeleteProduct(ctx context.Context, id int64) error {
@@ -65,8 +65,16 @@ func (s *service) DeleteProduct(ctx context.Context, id int64) error {
 	return err
 }
 
+func (s *service) CreateCategory(ctx context.Context, c *domain.Category) (*domain.Category, error) {
+	return s.repo.CreateCategory(ctx, c)
+}
+
+func (s *service) ListCategories(ctx context.Context) ([]*domain.Category, error) {
+	return s.repo.ListCategories(ctx)
+}
+
 func (s *service) invalidateCache(ctx context.Context) {
-	products, err := s.repo.List(ctx, 1, 100)
+	products, err := s.repo.List(ctx, 1, 100, "")
 	if err != nil {
 		slog.Error("Failed to fetch products for cache invalidation", "error", err)
 		return

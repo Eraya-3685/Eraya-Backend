@@ -26,9 +26,12 @@ func NewStorageService(supabaseConfig config.SupabaseConfig) *StorageService {
 }
 
 func (s *StorageService) UploadFile(folder, filename string, content io.Reader, contentType string) (string, error) {
-	uniqueFilename := fmt.Sprintf("%d_%s", time.Now().Unix(), filename)
+	// Generate unique filename with timestamp
+	ext := filepath.Ext(filename)
+	uniqueFilename := fmt.Sprintf("%d%s", time.Now().UnixNano(), ext)
 	fullPath := filepath.Join(folder, uniqueFilename)
 
+	// API URL for upload
 	url := fmt.Sprintf("%s/storage/v1/object/%s/%s", s.baseURL, s.bucket, fullPath)
 
 	data, err := io.ReadAll(content)
@@ -57,21 +60,30 @@ func (s *StorageService) UploadFile(folder, filename string, content io.Reader, 
 		return "", fmt.Errorf("failed to upload to supabase: status %d, body: %s", resp.StatusCode, string(body))
 	}
 
-	publicURL := fmt.Sprintf("%s/storage/v1/object/public/%s/%s", s.baseURL, s.bucket, fullPath)
-	return publicURL, nil
+	// Return relative path with leading slash
+	return "/" + strings.ReplaceAll(fullPath, "\\", "/"), nil
 }
 
-// DeleteFile deletes a file from the bucket using its public URL
-func (s *StorageService) DeleteFile(publicURL string) error {
-	// Extract the path from public URL
-	// publicURL looks like: {URL}/storage/v1/object/public/{bucket}/{path}
-	searchStr := fmt.Sprintf("/storage/v1/object/public/%s/", s.bucket)
-	idx := strings.Index(publicURL, searchStr)
-	if idx == -1 {
-		return fmt.Errorf("invalid public url")
-	}
+func (s *StorageService) DeleteFile(input string) error {
+	var fullPath string
 
-	fullPath := publicURL[idx+len(searchStr):]
+	// Check if input is a full URL or a relative path
+	if strings.HasPrefix(input, "http") {
+		// Public URL looks like: {URL}/storage/v1/object/public/{bucket}/{path}
+		searchStr := fmt.Sprintf("/storage/v1/object/public/%s/", s.bucket)
+		idx := strings.Index(input, searchStr)
+		if idx == -1 {
+			// Not a Supabase public URL we recognize, maybe it's just the filename?
+			// Best effort: just take the last part
+			parts := strings.Split(input, "/")
+			fullPath = parts[len(parts)-1]
+		} else {
+			fullPath = input[idx+len(searchStr):]
+		}
+	} else {
+		// It's a relative path, remove leading slash
+		fullPath = strings.TrimPrefix(input, "/")
+	}
 
 	// Delete URL format: {URL}/storage/v1/object/{bucket}/{path}
 	url := fmt.Sprintf("%s/storage/v1/object/%s/%s", s.baseURL, s.bucket, fullPath)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"eraya/domain"
 	"eraya/order"
+	"fmt"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -42,12 +43,32 @@ func (r *orderRepo) Create(ctx context.Context, o *domain.Order, items []*domain
 		INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
 		VALUES (:order_id, :product_id, :quantity, :price_at_purchase)
 	`
+	stockUpdateQuery := `
+		UPDATE products 
+		SET stock_count = stock_count - $1 
+		WHERE id = $2 AND stock_count >= $1
+	`
+
 	for _, item := range items {
 		item.OrderID = o.ID
+		// 1. Insert order item
 		_, err = tx.NamedExecContext(ctx, itemQuery, item)
 		if err != nil {
 			tx.Rollback()
 			return nil, err
+		}
+
+		// 2. Decrement stock
+		res, err := tx.ExecContext(ctx, stockUpdateQuery, item.Quantity, item.ProductID)
+		if err != nil {
+			tx.Rollback()
+			return nil, err
+		}
+		
+		rowsAffected, _ := res.RowsAffected()
+		if rowsAffected == 0 {
+			tx.Rollback()
+			return nil, fmt.Errorf("insufficient stock for product ID: %d", item.ProductID)
 		}
 	}
 

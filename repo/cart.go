@@ -17,7 +17,12 @@ func NewCartRepo(db *sqlx.DB) order.CartRepo {
 }
 
 func (r *cartRepo) Add(ctx context.Context, item *domain.CartItem) error {
-	query := `INSERT INTO cart_items (user_id, product_id, quantity) VALUES (:user_id, :product_id, :quantity)`
+	query := `
+		INSERT INTO cart_items (user_id, product_id, quantity) 
+		VALUES (:user_id, :product_id, :quantity)
+		ON CONFLICT (user_id, product_id) 
+		DO UPDATE SET quantity = cart_items.quantity + EXCLUDED.quantity
+	`
 	_, err := r.db.NamedExecContext(ctx, query, &item)
 	return err
 }

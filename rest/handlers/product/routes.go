@@ -21,4 +21,12 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string) {
 			r.Delete("/{id}", h.DeleteProduct)
 		})
 	})
+
+	r.Route("/categories", func(r chi.Router) {
+		r.Get("/", h.ListCategories)
+		r.With(
+			middleware.AuthMiddleware(jwtSecret),
+			middleware.AdminMiddleware(),
+		).Post("/", h.CreateCategory)
+	})
 }
