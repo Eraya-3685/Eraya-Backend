@@ -2,12 +2,13 @@ package middleware
 
 import (
 	"context"
+	"eraya/user"
 	"eraya/util"
 	"net/http"
 	"strings"
 )
 
-func AuthMiddleware(secret string) func(http.Handler) http.Handler {
+func AuthMiddleware(secret string, userSvc user.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			authHeader := r.Header.Get("Authorization")
@@ -28,6 +29,13 @@ func AuthMiddleware(secret string) func(http.Handler) http.Handler {
 			claims, err := util.ValidateJWT(tokenString, secret)
 			if err != nil {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+
+			// Verify user still exists in DB
+			user, err := userSvc.GetProfile(r.Context(), claims.UserID)
+			if err != nil || user == nil {
+				http.Error(w, "user no longer exists or inactive", http.StatusUnauthorized)
 				return
 			}
 

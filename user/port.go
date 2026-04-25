@@ -13,6 +13,13 @@ type Service interface {
 	UpdateProfile(ctx context.Context, userID int64, fullName string, email *string, phone *string, address *string) error
 	UploadAvatar(ctx context.Context, userID int64, filename string, content io.Reader, contentType string) (string, error)
 	UpdateRole(ctx context.Context, userID int64, role string) error
+	SocialLogin(ctx context.Context, user *domain.User) (string, *domain.User, error)
+	UpdatePassword(ctx context.Context, userID int64, password string) error
+	RequestOTP(ctx context.Context, userID int64, purpose string) error
+	VerifyOTP(ctx context.Context, userID int64, purpose string, code string) (bool, error)
+	ForgotPassword(ctx context.Context, email string) error
+	ResetPassword(ctx context.Context, email string, code string, newPassword string) (string, *domain.User, error)
+	DeleteUser(ctx context.Context, userID int64) error
 }
 
 type UserRepo interface {
@@ -20,7 +27,10 @@ type UserRepo interface {
 	FindByEmail(ctx context.Context, email string) (*domain.User, error)
 	FindByEmailOrPhone(ctx context.Context, identifier string) (*domain.User, error)
 	FindByID(ctx context.Context, id int64) (*domain.User, error)
+	FindBySocialID(ctx context.Context, socialID string) (*domain.User, error)
 	UpdateProfile(ctx context.Context, id int64, fullName string, email *string, phone *string, address *string) error
 	UpdateAvatar(ctx context.Context, id int64, avatarURL string) error
 	UpdateRole(ctx context.Context, id int64, role string) error
+	UpdatePassword(ctx context.Context, id int64, passwordHash string) error
+	Delete(ctx context.Context, id int64) error
 }

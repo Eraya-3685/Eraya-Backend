@@ -3,8 +3,10 @@ package domain
 import "time"
 
 type Category struct {
-	ID   int    `json:"id" db:"id"`
-	Name string `json:"name" db:"name"`
+	ID           int    `json:"id" db:"id"`
+	Name         string  `json:"name" db:"name"`
+	ImageURL     *string `json:"image_url" db:"image_url"`
+	ProductCount int     `json:"product_count" db:"product_count"`
 }
 
 type Product struct {
@@ -15,7 +17,7 @@ type Product struct {
 	DiscountPrice      *float64  `json:"discount_price" db:"discount_price"`
 	DiscountPercentage *int      `json:"discount_percentage" db:"discount_percentage"`
 	StockCount         int       `json:"stock_count" db:"stock_count"`
-	CategoryID         *int      `json:"category_id" db:"category_id"`
+	CategoryID         *int      `json:"category_id,omitempty" db:"category_id"` 
 	CreatedAt          time.Time `json:"created_at" db:"created_at"`
 	Slug               string    `json:"slug" db:"slug"`
 	IsActive           bool      `json:"is_active" db:"is_active"`
@@ -23,7 +25,9 @@ type Product struct {
 	AverageRating      float64   `json:"average_rating" db:"average_rating"`
 	TotalReviews       int       `json:"total_reviews" db:"total_reviews"`
 
-	Images []ProductImage `json:"images,omitempty" db:"-"`
+	CategoryIDs        []int          `json:"category_ids,omitempty" db:"-"`
+	Categories         []Category      `json:"categories,omitempty" db:"-"`
+	Images             []ProductImage `json:"images,omitempty" db:"-"`
 }
 
 type ProductImage struct {

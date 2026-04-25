@@ -14,6 +14,13 @@ type SupabaseConfig struct {
 	Bucket string
 }
 
+type SMTPConfig struct {
+	Host     string
+	Port     int
+	User     string
+	Password string
+}
+
 type Config struct {
 	HttpPort       int
 	DatabaseURL    string
@@ -22,6 +29,7 @@ type Config struct {
 	BaseURL        string
 	AllowedOrigins string
 	Supabase       SupabaseConfig
+	SMTP           SMTPConfig
 }
 
 var configurations *Config
@@ -42,6 +50,7 @@ func loadConfig() {
 	// Try HTTP_PORT first, then fallback to PORT (Render/Railway standard)
 	portStr := getEnv("HTTP_PORT", getEnv("PORT", "8080"))
 	httpPort, _ := strconv.Atoi(portStr)
+	smtpPort, _ := strconv.Atoi(getEnv("SMTP_PORT", "587"))
 
 	configurations = &Config{
 		HttpPort:       httpPort,
@@ -54,6 +63,12 @@ func loadConfig() {
 			URL:    getEnv("SUPABASE_URL", ""),
 			Key:    getEnv("SUPABASE_SERVICE_KEY", ""),
 			Bucket: getEnv("SUPABASE_BUCKET", "eraya"),
+		},
+		SMTP: SMTPConfig{
+			Host:     getEnv("SMTP_HOST", ""),
+			Port:     smtpPort,
+			User:     getEnv("SMTP_USER", ""),
+			Password: getEnv("SMTP_PASS", ""),
 		},
 	}
 }

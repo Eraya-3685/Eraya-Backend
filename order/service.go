@@ -59,6 +59,16 @@ func (s *service) Checkout(ctx context.Context, userID int64, paymentMethod, shi
 				return fmt.Errorf("product not found: %d", item.ProductID)
 			}
 
+			// 1. Check stock
+			if p.StockCount < item.Quantity {
+				return fmt.Errorf("insufficient stock for product: %s", p.Name)
+			}
+
+			// 2. Try to decrement stock (Atomic)
+			if err := s.productSvc.DecrementStock(gCtx, item.ProductID, item.Quantity); err != nil {
+				return err
+			}
+
 			price := p.BasePrice
 			if p.DiscountPrice != nil && *p.DiscountPrice > 0 {
 				price = *p.DiscountPrice

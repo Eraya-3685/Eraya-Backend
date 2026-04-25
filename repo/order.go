@@ -25,23 +25,19 @@ func (r *orderRepo) Create(ctx context.Context, o *domain.Order, items []*domain
 
 	query := `
 		INSERT INTO orders (user_id, total_price, payment_method, payment_status, order_status, shipping_address)
-		VALUES (:user_id, :total_price, :payment_method, :payment_status, :order_status, :shipping_address)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at
 	`
-	rows, err := sqlx.NamedQueryContext(ctx, tx, query, o)
+	err = tx.QueryRowContext(ctx, query, o.UserID, o.TotalPrice, o.PaymentMethod, o.PaymentStatus, o.OrderStatus, o.ShippingAddress).
+		Scan(&o.ID, &o.CreatedAt)
 	if err != nil {
 		tx.Rollback()
 		return nil, err
 	}
 
-	if rows.Next() {
-		rows.Scan(&o.ID, &o.CreatedAt)
-	}
-	rows.Close()
-
 	itemQuery := `
 		INSERT INTO order_items (order_id, product_id, quantity, price_at_purchase)
-		VALUES (:order_id, :product_id, :quantity, :price_at_purchase)
+		VALUES ($1, $2, $3, $4)
 	`
 	stockUpdateQuery := `
 		UPDATE products 
@@ -52,7 +48,7 @@ func (r *orderRepo) Create(ctx context.Context, o *domain.Order, items []*domain
 	for _, item := range items {
 		item.OrderID = o.ID
 		// 1. Insert order item
-		_, err = tx.NamedExecContext(ctx, itemQuery, item)
+		_, err = tx.ExecContext(ctx, itemQuery, o.ID, item.ProductID, item.Quantity, item.PriceAtPurchase)
 		if err != nil {
 			tx.Rollback()
 			return nil, err

@@ -46,17 +46,13 @@ func (r *chatRepo) FindOrCreateConversation(ctx context.Context, user1, user2 in
 func (r *chatRepo) SaveMessage(ctx context.Context, msg *domain.Message) (*domain.Message, error) {
 	query := `
 		INSERT INTO messages (conversation_id, sender_id, message_text)
-		VALUES (:conversation_id, :sender_id, :message_text)
+		VALUES ($1, $2, $3)
 		RETURNING id, created_at
 	`
-	rows, err := r.db.NamedQueryContext(ctx, query, msg)
+	err := r.db.QueryRowContext(ctx, query, msg.ConversationID, msg.SenderID, msg.MessageText).
+		Scan(&msg.ID, &msg.CreatedAt)
 	if err != nil {
 		return nil, err
-	}
-	defer rows.Close()
-
-	if rows.Next() {
-		rows.Scan(&msg.ID, &msg.CreatedAt)
 	}
 	return msg, nil
 }

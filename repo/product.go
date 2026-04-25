@@ -7,6 +7,7 @@ import (
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
+	"github.com/lib/pq"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -26,29 +27,29 @@ func (r *productRepo) Create(ctx context.Context, p *domain.Product) (*domain.Pr
 
 	query := `
 		INSERT INTO products (name, description, base_price, discount_price, discount_percentage, stock_count, slug, is_active)
-		VALUES (:name, :description, :base_price, :discount_price, :discount_percentage, :stock_count, :slug, :is_active)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		RETURNING id, created_at, sales_count, average_rating, total_reviews
 	`
-	rows, err := sqlx.NamedQueryContext(ctx, tx, query, p)
+	err = tx.QueryRowContext(ctx, query, p.Name, p.Description, p.BasePrice, p.DiscountPrice, p.DiscountPercentage, p.StockCount, p.Slug, p.IsActive).
+		Scan(&p.ID, &p.CreatedAt, &p.SalesCount, &p.AverageRating, &p.TotalReviews)
 	if err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("failed to create product: %w", err)
 	}
-	defer rows.Close()
 
-	if rows.Next() {
-		err = rows.Scan(&p.ID, &p.CreatedAt, &p.SalesCount, &p.AverageRating, &p.TotalReviews)
+	// Insert categories
+	for _, catID := range p.CategoryIDs {
+		_, err = tx.ExecContext(ctx, `INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)`, p.ID, catID)
 		if err != nil {
 			tx.Rollback()
-			return nil, err
+			return nil, fmt.Errorf("failed to link category: %w", err)
 		}
 	}
-	rows.Close()
 
 	// Insert images
 	for i := range p.Images {
 		p.Images[i].ProductID = p.ID
-		_, err = tx.NamedExecContext(ctx, `INSERT INTO product_images (product_id, image_url, is_primary) VALUES (:product_id, :image_url, :is_primary)`, p.Images[i])
+		_, err = tx.ExecContext(ctx, `INSERT INTO product_images (product_id, image_url, is_primary) VALUES ($1, $2, $3)`, p.Images[i].ProductID, p.Images[i].ImageURL, p.Images[i].IsPrimary)
 		if err != nil {
 			tx.Rollback()
 			return nil, err
@@ -58,35 +59,86 @@ func (r *productRepo) Create(ctx context.Context, p *domain.Product) (*domain.Pr
 	return p, tx.Commit()
 }
 
-func (r *productRepo) List(ctx context.Context, page, limit int64, search string) ([]*domain.Product, error) {
-	offset := (page - 1) * limit
-	query := `SELECT * FROM products WHERE is_active = true`
-	args := []interface{}{limit, offset}
+func (r *productRepo) List(ctx context.Context, page, limit int64, search string, categoryIDs []int, sortBy string, minPrice, maxPrice float64) ([]*domain.Product, error) {
+	var args []any
+	nextParam := 1
 
+	baseQuery := `SELECT DISTINCT p.* FROM products p`
+	if len(categoryIDs) > 0 {
+		baseQuery += ` JOIN product_categories pc ON p.id = pc.product_id`
+	}
+	baseQuery += ` WHERE p.is_active = true`
+
+	if len(categoryIDs) > 0 {
+		baseQuery += fmt.Sprintf(` AND pc.category_id = ANY($%d)`, nextParam)
+		args = append(args, pq.Array(categoryIDs))
+		nextParam++
+	}
+	if minPrice > 0 {
+		baseQuery += fmt.Sprintf(` AND p.base_price >= $%d`, nextParam)
+		args = append(args, minPrice)
+		nextParam++
+	}
+	if maxPrice > 0 {
+		baseQuery += fmt.Sprintf(` AND p.base_price <= $%d`, nextParam)
+		args = append(args, maxPrice)
+		nextParam++
+	}
 	if search != "" {
-		query += ` AND (name ILIKE $3 OR description ILIKE $3)`
+		baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam)
 		args = append(args, "%"+search+"%")
+		nextParam++
 	}
 
-	query += ` ORDER BY created_at DESC LIMIT $1 OFFSET $2`
+	orderBy := "p.created_at DESC"
+	switch sortBy {
+	case "price_low":
+		orderBy = "p.base_price ASC"
+	case "price_high":
+		orderBy = "p.base_price DESC"
+	case "popular":
+		orderBy = "p.average_rating DESC"
+	case "newest":
+		orderBy = "p.created_at DESC"
+	}
+
+	offset := (page - 1) * limit
+	baseQuery += fmt.Sprintf(` ORDER BY %s LIMIT $%d OFFSET $%d`, orderBy, nextParam, nextParam+1)
+	args = append(args, limit, offset)
 
 	var products []*domain.Product
-	err := r.db.SelectContext(ctx, &products, query, args...)
+	err := r.db.SelectContext(ctx, &products, baseQuery, args...)
 	if err != nil {
 		return nil, err
 	}
 
-	// Fetch images in parallel using errgroup
+	// Fetch images and categories in parallel using errgroup
 	g, gCtx := errgroup.WithContext(ctx)
 	for i := range products {
 		i := i // Capture for closure
 		g.Go(func() error {
+			// Fetch Images
 			var images []domain.ProductImage
-			err := r.db.SelectContext(gCtx, &images, "SELECT * FROM product_images WHERE product_id = $1", products[i].ID)
-			if err == nil {
+			if err := r.db.SelectContext(gCtx, &images, "SELECT * FROM product_images WHERE product_id = $1", products[i].ID); err == nil {
 				products[i].Images = images
 			}
-			return nil // Don't fail the whole list if one image fetch fails
+
+			// Fetch Categories
+			var categories []domain.Category
+			query := `
+				SELECT c.id, c.name, COALESCE(c.image_url, '') as image_url 
+				FROM categories c
+				JOIN product_categories pc ON c.id = pc.category_id
+				WHERE pc.product_id = $1
+			`
+			if err := r.db.SelectContext(gCtx, &categories, query, products[i].ID); err == nil {
+				products[i].Categories = categories
+				// For frontend backward compatibility, set CategoryIDs array
+				for _, c := range categories {
+					products[i].CategoryIDs = append(products[i].CategoryIDs, c.ID)
+				}
+			}
+			return nil
 		})
 	}
 
@@ -94,16 +146,67 @@ func (r *productRepo) List(ctx context.Context, page, limit int64, search string
 	return products, nil
 }
 
-func (r *productRepo) Count(ctx context.Context, search string) (int64, error) {
-	query := `SELECT COUNT(*) FROM products WHERE is_active = true`
+func (r *productRepo) BulkDeleteProducts(ctx context.Context, ids []int64) error {
+	query, args, err := sqlx.In("DELETE FROM products WHERE id IN (?)", ids)
+	if err != nil {
+		return err
+	}
+	query = r.db.Rebind(query)
+	_, err = r.db.ExecContext(ctx, query, args...)
+	return err
+}
+
+func (r *productRepo) DecrementStock(ctx context.Context, id int64, quantity int) error {
+	query := `
+		UPDATE products 
+		SET stock_count = stock_count - $1, 
+		    sales_count = sales_count + $1 
+		WHERE id = $2 AND stock_count >= $1
+	`
+	res, err := r.db.ExecContext(ctx, query, quantity, id)
+	if err != nil {
+		return err
+	}
+	rows, _ := res.RowsAffected()
+	if rows == 0 {
+		return fmt.Errorf("insufficient stock for product %d", id)
+	}
+	return nil
+}
+
+func (r *productRepo) Count(ctx context.Context, search string, categoryIDs []int, minPrice, maxPrice float64) (int64, error) {
 	var args []interface{}
+	nextParam := 1
+
+	baseQuery := `SELECT COUNT(DISTINCT p.id) FROM products p`
+	if len(categoryIDs) > 0 {
+		baseQuery += ` JOIN product_categories pc ON p.id = pc.product_id`
+	}
+	baseQuery += ` WHERE p.is_active = true`
+
+	if len(categoryIDs) > 0 {
+		baseQuery += fmt.Sprintf(` AND pc.category_id = ANY($%d)`, nextParam)
+		args = append(args, pq.Array(categoryIDs))
+		nextParam++
+	}
+	if minPrice > 0 {
+		baseQuery += fmt.Sprintf(` AND p.base_price >= $%d`, nextParam)
+		args = append(args, minPrice)
+		nextParam++
+	}
+	if maxPrice > 0 {
+		baseQuery += fmt.Sprintf(` AND p.base_price <= $%d`, nextParam)
+		args = append(args, maxPrice)
+		nextParam++
+	}
 	if search != "" {
-		query += ` AND (name ILIKE $1 OR description ILIKE $1)`
+		baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam)
 		args = append(args, "%"+search+"%")
+		nextParam++
 	}
 
 	var count int64
-	err := r.db.GetContext(ctx, &count, query, args...)
+	err := r.db.GetContext(ctx, &count, baseQuery, args...)
 	return count, err
 }
 
@@ -152,12 +255,12 @@ func (r *productRepo) Update(ctx context.Context, p *domain.Product) ([]string, 
 	// 1. Update main product info
 	query := `
 		UPDATE products 
-		SET name = :name, description = :description, base_price = :base_price, 
-		    discount_price = :discount_price, discount_percentage = :discount_percentage, 
-		    stock_count = :stock_count, slug = :slug, is_active = :is_active
-		WHERE id = :id
+		SET name = $1, description = $2, base_price = $3, 
+		    discount_price = $4, discount_percentage = $5, 
+		    stock_count = $6, slug = $7, is_active = $8
+		WHERE id = $9
 	`
-	_, err = tx.NamedExecContext(ctx, query, p)
+	_, err = tx.ExecContext(ctx, query, p.Name, p.Description, p.BasePrice, p.DiscountPrice, p.DiscountPercentage, p.StockCount, p.Slug, p.IsActive, p.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -198,10 +301,29 @@ func (r *productRepo) Update(ctx context.Context, p *domain.Product) ([]string, 
 		for _, img := range p.Images {
 			if !existingURLs[img.ImageURL] {
 				img.ProductID = p.ID
-				_, err = tx.NamedExecContext(ctx, `INSERT INTO product_images (product_id, image_url, is_primary) VALUES (:product_id, :image_url, :is_primary)`, img)
+				_, err = tx.ExecContext(ctx, `INSERT INTO product_images (product_id, image_url, is_primary) VALUES ($1, $2, $3)`, p.ID, img.ImageURL, img.IsPrimary)
 				if err != nil {
 					return nil, err
 				}
+			} else {
+				_, err = tx.ExecContext(ctx, `UPDATE product_images SET is_primary = $1 WHERE image_url = $2 AND product_id = $3`, img.IsPrimary, img.ImageURL, p.ID)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	// 3. Sync categories
+	if p.CategoryIDs != nil {
+		_, err = tx.ExecContext(ctx, "DELETE FROM product_categories WHERE product_id = $1", p.ID)
+		if err != nil {
+			return nil, err
+		}
+		for _, catID := range p.CategoryIDs {
+			_, err = tx.ExecContext(ctx, "INSERT INTO product_categories (product_id, category_id) VALUES ($1, $2)", p.ID, catID)
+			if err != nil {
+				return nil, err
 			}
 		}
 	}
@@ -216,13 +338,105 @@ func (r *productRepo) Delete(ctx context.Context, id int64) error {
 
 // Categories
 func (r *productRepo) CreateCategory(ctx context.Context, c *domain.Category) (*domain.Category, error) {
-	query := `INSERT INTO categories (name) VALUES ($1) RETURNING id`
-	err := r.db.QueryRowContext(ctx, query, c.Name).Scan(&c.ID)
-	return c, err
+	// Check for duplicate name (case-insensitive)
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM categories WHERE LOWER(name) = LOWER($1))`, c.Name).Scan(&exists)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("category '%s' already exists", c.Name)
+	}
+
+	query := `INSERT INTO categories (name, image_url) VALUES ($1, $2) RETURNING id, name, image_url, 0 as product_count`
+	var created domain.Category
+	err = r.db.GetContext(ctx, &created, query, c.Name, c.ImageURL)
+	if err != nil {
+		return nil, err
+	}
+	return &created, nil
 }
 
 func (r *productRepo) ListCategories(ctx context.Context) ([]*domain.Category, error) {
 	var categories []*domain.Category
-	err := r.db.SelectContext(ctx, &categories, "SELECT * FROM categories ORDER BY name ASC")
+	query := `
+		SELECT c.id, c.name, COALESCE(c.image_url, '') as image_url, COUNT(pc.product_id) as product_count 
+		FROM categories c 
+		LEFT JOIN product_categories pc ON c.id = pc.category_id 
+		GROUP BY c.id, c.name, c.image_url 
+		ORDER BY c.name ASC`
+	err := r.db.SelectContext(ctx, &categories, query)
 	return categories, err
+}
+
+func (r *productRepo) UpdateCategory(ctx context.Context, c *domain.Category) (*domain.Category, error) {
+	// Check for duplicate name (case-insensitive), excluding current category
+	var exists bool
+	err := r.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM categories WHERE LOWER(name) = LOWER($1) AND id != $2)`, c.Name, c.ID).Scan(&exists)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, fmt.Errorf("category '%s' already exists", c.Name)
+	}
+
+	query := `UPDATE categories SET name = $1, image_url = $2 WHERE id = $3 RETURNING id, name, image_url, 0 as product_count`
+	var updated domain.Category
+	err = r.db.GetContext(ctx, &updated, query, c.Name, c.ImageURL, c.ID)
+	if err != nil {
+		return nil, err
+	}
+	return &updated, nil
+}
+
+func (r *productRepo) DeleteCategory(ctx context.Context, id int) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// First remove all product links to avoid FK constraint
+	_, err = tx.ExecContext(ctx, "DELETE FROM product_categories WHERE category_id = $1", id)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	// Then delete the category
+	_, err = tx.ExecContext(ctx, "DELETE FROM categories WHERE id = $1", id)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
+}
+
+func (r *productRepo) BulkDeleteCategories(ctx context.Context, ids []int) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	// Remove product_categories links first
+	unlinkQuery, unlinkArgs, err := sqlx.In("DELETE FROM product_categories WHERE category_id IN (?)", ids)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	unlinkQuery = r.db.Rebind(unlinkQuery)
+	_, err = tx.ExecContext(ctx, unlinkQuery, unlinkArgs...)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	// Then delete the categories
+	query, args, err := sqlx.In("DELETE FROM categories WHERE id IN (?)", ids)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	query = r.db.Rebind(query)
+	_, err = tx.ExecContext(ctx, query, args...)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+	return tx.Commit()
 }

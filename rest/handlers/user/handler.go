@@ -273,3 +273,191 @@ func (h *Handler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]string{"avatar_url": url})
 }
+
+type socialLoginReq struct {
+	FullName  string  `json:"full_name"`
+	Email     string  `json:"email"`
+	SocialID  string  `json:"social_id"`
+	AvatarURL *string `json:"avatar_url"`
+}
+
+// SocialLogin godoc
+// @Summary Login with social provider
+// @Description Authenticate or register a user using social provider data (e.g. Google).
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param body body socialLoginReq true "Social Login Details"
+// @Success 200 {object} map[string]any
+// @Router /users/social-login [post]
+func (h *Handler) SocialLogin(w http.ResponseWriter, r *http.Request) {
+	var req socialLoginReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	u := &domain.User{
+		FullName:  req.FullName,
+		Email:     req.Email,
+		SocialID:  &req.SocialID,
+		AvatarURL: req.AvatarURL,
+	}
+
+	token, user, err := h.svc.SocialLogin(r.Context(), u)
+	if err != nil {
+		slog.Error("Social login failed", "email", req.Email, "error", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"token": token,
+		"user":  user,
+	})
+}
+
+type otpRequest struct {
+	Purpose string `json:"purpose"` // e.g., "password", "email", "phone"
+}
+
+func (h *Handler) RequestOTP(w http.ResponseWriter, r *http.Request) {
+	var req otpRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	userIDVal := r.Context().Value("user_id")
+	if userIDVal == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := userIDVal.(int64)
+
+	err := h.svc.RequestOTP(r.Context(), userID, req.Purpose)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+type secureUpdateReq struct {
+	OTP      string  `json:"otp"`
+	Purpose  string  `json:"purpose"`
+	Password *string `json:"password"`
+	Email    *string `json:"email"`
+	Phone    *string `json:"phone"`
+}
+
+func (h *Handler) SecureUpdate(w http.ResponseWriter, r *http.Request) {
+	var req secureUpdateReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	userIDVal := r.Context().Value("user_id")
+	if userIDVal == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := userIDVal.(int64)
+
+	// 1. Verify OTP
+	valid, err := h.svc.VerifyOTP(r.Context(), userID, req.Purpose, req.OTP)
+	if err != nil {
+		http.Error(w, "Server error during verification", http.StatusInternalServerError)
+		return
+	}
+	if !valid {
+		http.Error(w, "Invalid or expired OTP", http.StatusUnauthorized)
+		return
+	}
+
+	// 2. Execute update based on purpose
+	switch req.Purpose {
+	case "password":
+		if req.Password == nil {
+			http.Error(w, "password is required", http.StatusBadRequest)
+			return
+		}
+		err = h.svc.UpdatePassword(r.Context(), userID, *req.Password)
+	case "email":
+		err = h.svc.UpdateProfile(r.Context(), userID, "", req.Email, nil, nil)
+	case "phone":
+		err = h.svc.UpdateProfile(r.Context(), userID, "", nil, req.Phone, nil)
+	default:
+		http.Error(w, "invalid purpose", http.StatusBadRequest)
+		return
+	}
+
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+type forgotPasswordReq struct {
+	Email string `json:"email"`
+}
+
+func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	var req forgotPasswordReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.svc.ForgotPassword(r.Context(), req.Email); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+type resetPasswordReq struct {
+	Email    string `json:"email"`
+	OTP      string `json:"otp"`
+	Password string `json:"password"`
+}
+
+func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	var req resetPasswordReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	token, user, err := h.svc.ResetPassword(r.Context(), req.Email, req.OTP, req.Password)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]any{
+		"token": token,
+		"user":  user,
+	})
+}
+
+func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	userID, _ := strconv.ParseInt(idStr, 10, 64)
+
+	if err := h.svc.DeleteUser(r.Context(), userID); err != nil {
+		slog.Error("Failed to delete user", "id", userID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("User deleted successfully"))
+}

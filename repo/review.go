@@ -25,18 +25,14 @@ func (r *reviewRepo) Create(ctx context.Context, rev *domain.Review) (*domain.Re
 
 	query := `
 		INSERT INTO reviews (product_id, user_id, rating, comment)
-		VALUES (:product_id, :user_id, :rating, :comment)
+		VALUES ($1, $2, $3, $4)
 		RETURNING id, created_at
 	`
-	rows, err := sqlx.NamedQueryContext(ctx, tx, query, rev)
+	err = tx.QueryRowContext(ctx, query, rev.ProductID, rev.UserID, rev.Rating, rev.Comment).
+		Scan(&rev.ID, &rev.CreatedAt)
 	if err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("failed to create review: %w", err)
-	}
-	defer rows.Close()
-
-	if rows.Next() {
-		rows.Scan(&rev.ID, &rev.CreatedAt)
 	}
 
 	updateProductQuery := `

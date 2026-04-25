@@ -7,6 +7,7 @@ import (
 	review_handler "eraya/rest/handlers/review"
 	user_handler "eraya/rest/handlers/user"
 	erayamiddleware "eraya/rest/middlewares"
+	"eraya/user"
 	"fmt"
 	"net/http"
 	"os"
@@ -22,6 +23,7 @@ import (
 type Server struct {
 	port           int
 	jwtSecret      string
+	userSvc        user.Service
 	userHandler    *user_handler.Handler
 	productHandler *product_handler.Handler
 	orderHandler   *order_handler.Handler
@@ -32,6 +34,7 @@ type Server struct {
 func NewServer(
 	port int,
 	jwtSecret string,
+	userSvc user.Service,
 	userHandler *user_handler.Handler,
 	productHandler *product_handler.Handler,
 	orderHandler *order_handler.Handler,
@@ -41,6 +44,7 @@ func NewServer(
 	return &Server{
 		port:           port,
 		jwtSecret:      jwtSecret,
+		userSvc:        userSvc,
 		userHandler:    userHandler,
 		productHandler: productHandler,
 		orderHandler:   orderHandler,
@@ -58,7 +62,7 @@ func (server *Server) Start() {
 	mux := chi.NewRouter()
 	mux.Use(middleware.Recoverer)
 	mux.Use(middleware.RealIP)
-	mux.Use(middleware.Compress(5)) // Gzip compression
+	mux.Use(middleware.Compress(5))    // Gzip compression
 	mux.Use(erayamiddleware.RateLimit) // IP-based Rate Limiting
 
 	// Global Security Headers
@@ -104,10 +108,10 @@ func (server *Server) Start() {
 
 	mux.Route("/api/v1", func(r chi.Router) {
 		user_handler.RegisterRoutes(r, server.userHandler, server.jwtSecret)
-		product_handler.RegisterRoutes(r, server.productHandler, server.jwtSecret)
-		order_handler.RegisterRoutes(r, server.orderHandler, server.jwtSecret)
-		review_handler.RegisterRoutes(r, server.reviewHandler, server.jwtSecret)
-		chat_handler.RegisterRoutes(r, server.chatHandler, server.jwtSecret)
+		product_handler.RegisterRoutes(r, server.productHandler, server.jwtSecret, server.userSvc)
+		order_handler.RegisterRoutes(r, server.orderHandler, server.jwtSecret, server.userSvc)
+		review_handler.RegisterRoutes(r, server.reviewHandler, server.jwtSecret, server.userSvc)
+		chat_handler.RegisterRoutes(r, server.chatHandler, server.jwtSecret, server.userSvc)
 	})
 
 	wrappedMux := manager.WrapMux(mux, manager.GetGlobalMiddlewares()...)

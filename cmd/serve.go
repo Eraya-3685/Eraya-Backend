@@ -4,6 +4,7 @@ import (
 	chat_pkg "eraya/chat"
 	"eraya/config"
 	"eraya/infra/db"
+	"eraya/infra/mail"
 	"eraya/infra/redis"
 	"eraya/infra/storage"
 	"eraya/order"
@@ -60,9 +61,10 @@ func Serve() {
 	}
 
 	storageService := storage.NewStorageService(cnf.Supabase)
+	mailer := mail.NewMailer(cnf.SMTP)
 
 	userRepo := repo.NewUserRepo(dbCon)
-	userService := user.NewService(userRepo, cnf.JwtSecretKey, storageService)
+	userService := user.NewService(userRepo, cnf.JwtSecretKey, storageService, redisDB, mailer)
 	userHandler := user_handler.NewHandler(userService, storageService)
 
 	productRepo := repo.NewProductRepo(dbCon)
@@ -88,6 +90,7 @@ func Serve() {
 	server := rest.NewServer(
 		cnf.HttpPort,
 		cnf.JwtSecretKey,
+		userService,
 		userHandler,
 		productHandler,
 		orderHandler,
