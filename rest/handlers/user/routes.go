@@ -9,6 +9,8 @@ import (
 func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string) {
 	r.Route("/users", func(r chi.Router) {
 		r.Post("/signup", h.Signup)
+		r.Post("/verify-signup", h.VerifySignup)
+		r.Post("/resend-activation", h.ResendActivationOTP)
 		r.Post("/login", h.Login)
 		r.Post("/social-login", h.SocialLogin)
 		r.Post("/forgot-password", h.ForgotPassword)
@@ -21,12 +23,19 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string) {
 		r.With(middleware.AuthMiddleware(jwtSecret, h.svc)).Post("/otp/request", h.RequestOTP)
 		r.With(middleware.AuthMiddleware(jwtSecret, h.svc)).Patch("/secure-update", h.SecureUpdate)
 
+		// Admin / Moderators with 'users' permission
+		r.With(
+			middleware.AuthMiddleware(jwtSecret, h.svc),
+			middleware.PermissionMiddleware("users"),
+		).Get("/", h.ListUsers)
+
 		// Admin only
 		r.With(
 			middleware.AuthMiddleware(jwtSecret, h.svc),
 			middleware.AdminMiddleware(),
 		).Group(func(r chi.Router) {
 			r.Patch("/{id}/role", h.UpdateUserRole)
+			r.Post("/bulk-role", h.BulkUpdateUserRole)
 			r.Delete("/{id}", h.DeleteUser)
 		})
 	})

@@ -39,21 +39,92 @@ func AuthMiddleware(secret string, userSvc user.Service) func(http.Handler) http
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), "user_id", claims.UserID)
-			ctx = context.WithValue(ctx, "role", claims.Role)
+			// Ensure user is active (Skip for verification route)
+			if !user.IsActive && !strings.Contains(r.URL.Path, "/verify-signup") {
+				http.Error(w, "account is deactivated", http.StatusForbidden)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), "user_id", user.ID)
+			ctx = context.WithValue(ctx, "role", user.Role)
+			ctx = context.WithValue(ctx, "permissions", user.Permissions)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }
 
 func AdminMiddleware() func(http.Handler) http.Handler {
+	return RoleMiddleware("admin")
+}
+
+func RoleMiddleware(allowedRoles ...string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			roleVal := r.Context().Value("role")
-			if roleVal == nil || roleVal.(string) != "admin" {
-				http.Error(w, "forbidden: admin access required", http.StatusForbidden)
+			if roleVal == nil {
+				http.Error(w, "forbidden: role not found", http.StatusForbidden)
 				return
 			}
+
+			userRole := roleVal.(string)
+			isAllowed := false
+			for _, role := range allowedRoles {
+				if userRole == role {
+					isAllowed = true
+					break
+				}
+			}
+
+			if !isAllowed {
+				http.Error(w, "forbidden: insufficient permissions", http.StatusForbidden)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+func PermissionMiddleware(requiredPermission string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			roleVal := r.Context().Value("role")
+			if roleVal == nil {
+				http.Error(w, "forbidden: role not found", http.StatusForbidden)
+				return
+			}
+
+			userRole := roleVal.(string)
+			// Admins bypass all permission checks
+			if userRole == "admin" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if userRole != "moderator" {
+				http.Error(w, "forbidden: role must be moderator or admin", http.StatusForbidden)
+				return
+			}
+
+			permissionsVal := r.Context().Value("permissions")
+			if permissionsVal == nil {
+				http.Error(w, "forbidden: permissions not found", http.StatusForbidden)
+				return
+			}
+
+			permissions := permissionsVal.([]string)
+			hasPermission := false
+			for _, p := range permissions {
+				if p == requiredPermission {
+					hasPermission = true
+					break
+				}
+			}
+
+			if !hasPermission {
+				http.Error(w, "forbidden: missing required permission: "+requiredPermission, http.StatusForbidden)
+				return
+			}
+
 			next.ServeHTTP(w, r)
 		})
 	}

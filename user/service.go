@@ -41,8 +41,16 @@ func (s *service) Signup(ctx context.Context, user *domain.User, password string
 		return nil, errors.New("email and password are required")
 	}
 
-	if len(password) < 6 {
-		return nil, errors.New("password must be at least 6 characters long")
+	if user.FullName == "" || len(user.FullName) < 3 {
+		return nil, errors.New("Full name must be at least 3 characters long")
+	}
+
+	if user.Email == "" {
+		return nil, errors.New("Email address is required")
+	}
+
+	if password == "" || len(password) < 6 {
+		return nil, errors.New("Password must be at least 6 characters long")
 	}
 
 	if user.Phone != nil {
@@ -71,7 +79,54 @@ func (s *service) Signup(ctx context.Context, user *domain.User, password string
 	}
 	user.PasswordHash = hashedPassword
 
-	return s.repo.Create(ctx, user)
+	// Facebook-style: Create Inactive User immediately
+	user.IsActive = false
+	user.Role = "buyer" // Default role
+	createdUser, err := s.repo.Create(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+
+	// Send OTP for verification
+	_ = s.RequestOTP(ctx, createdUser.ID, "verify_signup")
+
+	return createdUser, nil
+}
+
+func (s *service) VerifySignup(ctx context.Context, userID int64, otp string) (string, *domain.User, error) {
+	// 1. Verify OTP
+	valid, err := s.VerifyOTP(ctx, userID, "verify_signup", otp)
+	if err != nil {
+		return "", nil, err
+	}
+	if !valid {
+		return "", nil, errors.New("invalid or expired verification code")
+	}
+
+	// 2. Activate User
+	err = s.repo.UpdateStatus(ctx, userID, true)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// 3. Get full user data
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil {
+		return "", nil, err
+	}
+
+	// 4. Generate Session Token
+	token, err := util.GenerateJWT(user.ID, user.Role, s.jwtSecret)
+	if err != nil {
+		return "", nil, err
+	}
+
+	return token, user, nil
+}
+
+func (s *service) CleanupUnverifiedUsers(ctx context.Context) error {
+	// Remove users who haven't verified within 24 hours
+	return s.repo.DeleteUnverified(ctx, 24)
 }
 
 func (s *service) Login(ctx context.Context, identifier, password string) (string, *domain.User, error) {
@@ -83,11 +138,15 @@ func (s *service) Login(ctx context.Context, identifier, password string) (strin
 
 	user, err := s.repo.FindByEmailOrPhone(ctx, normalizedIdentifier)
 	if err != nil || user == nil {
-		return "", nil, errors.New("invalid identifier or password")
+		return "", nil, errors.New("user not found")
 	}
 
 	if !util.CheckPasswordHash(password, user.PasswordHash) {
-		return "", nil, errors.New("invalid identifier or password")
+		return "", nil, errors.New("incorrect password")
+	}
+
+	if !user.IsActive {
+		return "", nil, fmt.Errorf("your account is not verified. please verify your email first. [ID:%d]", user.ID)
 	}
 
 	token, err := util.GenerateJWT(user.ID, user.Role, s.jwtSecret)
@@ -234,11 +293,29 @@ func (s *service) UploadAvatar(ctx context.Context, userID int64, filename strin
 }
 
 func (s *service) UpdateRole(ctx context.Context, userID int64, role string) error {
-	err := s.repo.UpdateRole(ctx, userID, role)
+	validRoles := map[string]bool{"admin": true, "moderator": true, "buyer": true}
+	if !validRoles[role] {
+		return errors.New("invalid role: must be admin, moderator, or buyer")
+	}
+
+	// Default permissions based on role if not explicitly managed here
+	var perms []string
+	if role == "admin" {
+		perms = []string{"dashboard", "products", "categories", "orders", "users", "settings"}
+	} else if role == "moderator" {
+		// This method might need a permissions arg too if used individually
+		// For now, let's just keep it consistent with BulkUpdateRole
+	}
+
+	err := s.repo.UpdateRole(ctx, userID, role, perms)
 	if err == nil {
 		s.redis.Del(ctx, fmt.Sprintf("user:profile:%d", userID))
 	}
 	return err
+}
+
+func (s *service) ListUsers(ctx context.Context) ([]*domain.User, error) {
+	return s.repo.ListAll(ctx)
 }
 
 func (s *service) SocialLogin(ctx context.Context, u *domain.User) (string, *domain.User, error) {
@@ -269,6 +346,7 @@ func (s *service) SocialLogin(ctx context.Context, u *domain.User) (string, *dom
 			// 3. Create new user
 			u.Role = "buyer"
 			u.PasswordHash = "" // No password for social users
+			u.IsActive = true   // Social users (Google/Supabase) are already verified
 			existing, err = s.repo.Create(ctx, u)
 			if err != nil {
 				return "", nil, err
@@ -320,21 +398,21 @@ func (s *service) RequestOTP(ctx context.Context, userID int64, purpose string) 
 		return errors.New("user not found")
 	}
 
-	// Generate 6 digit OTP
+	key := fmt.Sprintf("otp:%s:%d", purpose, userID)
+	return s.sendAndStoreOTP(ctx, user.Email, key, 10*time.Minute)
+}
+
+func (s *service) sendAndStoreOTP(ctx context.Context, email string, key string, ttl time.Duration) error {
 	otp, err := generateRandomOTP(6)
 	if err != nil {
 		return err
 	}
 
-	// Store in Redis: key = "otp:[purpose]:[userID]", val = otp, TTL = 10m
-	key := fmt.Sprintf("otp:%s:%d", purpose, userID)
-	err = s.redis.Set(ctx, key, otp, 10*time.Minute).Err()
-	if err != nil {
+	if err := s.redis.Set(ctx, key, otp, ttl).Err(); err != nil {
 		return fmt.Errorf("failed to store otp: %w", err)
 	}
 
-	// Send Email
-	return s.mailer.SendOTP(user.Email, otp)
+	return s.mailer.SendOTP(email, otp)
 }
 
 func (s *service) VerifyOTP(ctx context.Context, userID int64, purpose string, code string) (bool, error) {
@@ -375,18 +453,8 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 		return nil
 	}
 
-	otp, err := generateRandomOTP(6)
-	if err != nil {
-		return err
-	}
-
 	key := fmt.Sprintf("otp:reset:%s", email)
-	err = s.redis.Set(ctx, key, otp, 15*time.Minute).Err()
-	if err != nil {
-		return err
-	}
-
-	return s.mailer.SendOTP(user.Email, otp)
+	return s.sendAndStoreOTP(ctx, user.Email, key, 15*time.Minute)
 }
 
 func (s *service) ResetPassword(ctx context.Context, email string, code string, newPassword string) (string, *domain.User, error) {
@@ -435,6 +503,71 @@ func (s *service) ResetPassword(ctx context.Context, email string, code string, 
 
 func (s *service) DeleteUser(ctx context.Context, userID int64) error {
 	err := s.repo.Delete(ctx, userID)
+	if err == nil {
+		s.redis.Del(ctx, fmt.Sprintf("user:profile:%d", userID))
+	}
+	return err
+}
+
+func (s *service) BulkUpdateRole(ctx context.Context, adminID int64, userIDs []int64, role string, permissions []string, otp string, password string) error {
+	if len(userIDs) == 0 {
+		return nil
+	}
+
+	// 1. Validate role
+	validRoles := map[string]bool{"admin": true, "moderator": true, "buyer": true}
+	if !validRoles[role] {
+		return errors.New("invalid role: must be admin, moderator, or buyer")
+	}
+
+	// 2. Security Check: ALL role changes REQUIRE OTP AND Password
+	if otp == "" || password == "" {
+		return errors.New("OTP and Password are required for all role modifications")
+	}
+
+	// Verify Performer's Password
+	admin, err := s.repo.FindByID(ctx, adminID)
+	if err != nil || admin == nil {
+		return errors.New("admin user not found")
+	}
+	if !util.CheckPasswordHash(password, admin.PasswordHash) {
+		return errors.New("invalid administrative password")
+	}
+
+	// Verify OTP
+	valid, err := s.VerifyOTP(ctx, adminID, "role_change", otp)
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return errors.New("invalid or expired OTP")
+	}
+
+	// Adjust permissions based on role
+	finalPermissions := permissions
+	if role == "admin" {
+		finalPermissions = []string{"dashboard", "products", "categories", "orders", "users", "settings"}
+	} else if role == "buyer" {
+		finalPermissions = []string{}
+	}
+
+	// 3. Perform Bulk Update
+	err = s.repo.BulkUpdateRole(ctx, userIDs, role, finalPermissions)
+	if err != nil {
+		return err
+	}
+
+	// 4. Invalidate Redis Caches for all affected users
+	pipe := s.redis.Pipeline()
+	for _, id := range userIDs {
+		pipe.Del(ctx, fmt.Sprintf("user:profile:%d", id))
+	}
+	_, _ = pipe.Exec(ctx)
+
+	return nil
+}
+func (s *service) ActivateUser(ctx context.Context, userID int64) error {
+	err := s.repo.UpdateStatus(ctx, userID, true)
 	if err == nil {
 		s.redis.Del(ctx, fmt.Sprintf("user:profile:%d", userID))
 	}

@@ -24,9 +24,11 @@ func SendData(w http.ResponseWriter, statusCode int, data interface{}) {
 }
 
 func SendError(w http.ResponseWriter, statusCode int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(statusCode)
-	json.NewEncoder(w).Encode(map[string]string{"error": msg})
+	SendData(w, statusCode, map[string]string{"error": msg})
+}
+
+func SendOK(w http.ResponseWriter, msg string) {
+	SendData(w, http.StatusOK, map[string]string{"message": msg})
 }
 
 func SendPage(w http.ResponseWriter, data any, page, limit, cnt int64) {

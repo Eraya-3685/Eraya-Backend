@@ -1,0 +1,2 @@
+-- +migrate Up
+ALTER TABLE users ADD COLUMN IF NOT EXISTS permissions JSONB DEFAULT '[]';

@@ -1,8 +1,10 @@
 package order
 
 import (
+	"context"
 	"encoding/json"
 	"eraya/order"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -38,8 +40,8 @@ type addToCartReq struct {
 // @Router /cart [post]
 func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 	role := r.Context().Value("role").(string)
-	if role == "admin" {
-		http.Error(w, "admins cannot manage carts", http.StatusForbidden)
+	if role == "admin" || role == "moderator" {
+		http.Error(w, "staff cannot manage carts", http.StatusForbidden)
 		return
 	}
 
@@ -72,8 +74,8 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 // @Router /cart [get]
 func (h *Handler) GetCart(w http.ResponseWriter, r *http.Request) {
 	role := r.Context().Value("role").(string)
-	if role == "admin" {
-		http.Error(w, "admins cannot manage carts", http.StatusForbidden)
+	if role == "admin" || role == "moderator" {
+		http.Error(w, "staff cannot manage carts", http.StatusForbidden)
 		return
 	}
 
@@ -108,8 +110,8 @@ type checkoutReq struct {
 // @Router /orders/checkout [post]
 func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 	role := r.Context().Value("role").(string)
-	if role == "admin" {
-		http.Error(w, "admins cannot place orders", http.StatusForbidden)
+	if role == "admin" || role == "moderator" {
+		http.Error(w, "staff cannot place orders", http.StatusForbidden)
 		return
 	}
 
@@ -144,8 +146,8 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 // @Router /orders [get]
 func (h *Handler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 	role := r.Context().Value("role").(string)
-	if role == "admin" {
-		http.Error(w, "admins do not have order history", http.StatusForbidden)
+	if role == "admin" || role == "moderator" {
+		http.Error(w, "staff do not have order history", http.StatusForbidden)
 		return
 	}
 
@@ -153,7 +155,9 @@ func (h *Handler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 
 	orders, err := h.svc.GetOrders(r.Context(), userID)
 	if err != nil {
-		slog.Error("Failed to get orders", "error", err)
+		if !errors.Is(err, context.Canceled) {
+			slog.Error("Failed to get orders", "error", err)
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -174,7 +178,9 @@ func (h *Handler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) AdminGetOrders(w http.ResponseWriter, r *http.Request) {
 	orders, err := h.svc.AdminGetAllOrders(r.Context())
 	if err != nil {
-		slog.Error("Admin failed to get orders", "error", err)
+		if !errors.Is(err, context.Canceled) {
+			slog.Error("Admin failed to get orders", "error", err)
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

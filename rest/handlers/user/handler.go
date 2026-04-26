@@ -14,14 +14,16 @@ import (
 )
 
 type Handler struct {
-	svc     user.Service
-	storage *storage.StorageService
+	svc       user.Service
+	storage   *storage.StorageService
+	jwtSecret string
 }
 
-func NewHandler(svc user.Service, storageService *storage.StorageService) *Handler {
+func NewHandler(svc user.Service, storageService *storage.StorageService, jwtSecret string) *Handler {
 	return &Handler{
-		svc:     svc,
-		storage: storageService,
+		svc:       svc,
+		storage:   storageService,
+		jwtSecret: jwtSecret,
 	}
 }
 
@@ -33,41 +35,133 @@ type signupReq struct {
 	Address  *string `json:"address"`
 }
 
+
+
 // Signup godoc
 // @Summary Register a new user
-// @Description Create a new user account with full name, email, password, phone, and address.
+// @Description Create a new buyer account. Requires a valid OTP previously sent via /users/signup-otp.
 // @Tags users
-// @Accept json
+// @Accept multipart/form-data
 // @Produce json
-// @Param signup body signupReq true "Signup Details"
-// @Success 201 {object} domain.User
+// @Param full_name formData string true "Full Name"
+// @Param email formData string true "Email"
+// @Param password formData string true "Password"
+// @Param phone formData string false "Phone"
+// @Param address formData string false "Address"
+// @Param otp formData string true "OTP"
+// @Param avatar formData file false "Avatar"
+// @Success 201 {object} map[string]any
 // @Failure 400 {string} string "Bad Request"
 // @Router /users/signup [post]
 func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
-	var req signupReq
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+	// Parse multipart form
+	if err := r.ParseMultipartForm(5 << 20); err != nil {
+		util.SendError(w, http.StatusBadRequest, "failed to parse form")
 		return
 	}
+
+	fullName := r.FormValue("full_name")
+	email := r.FormValue("email")
+	password := r.FormValue("password")
+	phone := r.FormValue("phone")
+	address := r.FormValue("address")
 
 	u := &domain.User{
-		FullName: req.FullName,
-		Email:    req.Email,
-		Phone:    req.Phone,
-		Address:  req.Address,
+		FullName: fullName,
+		Email:    email,
 		Role:     "buyer",
+		IsActive: false, // Inactive until verified
+	}
+	if phone != "" {
+		u.Phone = &phone
+	}
+	if address != "" {
+		u.Address = &address
 	}
 
-	createdUser, err := h.svc.Signup(r.Context(), u, req.Password)
+	createdUser, err := h.svc.Signup(r.Context(), u, password)
 	if err != nil {
-		slog.Error("Signup failed", "email", req.Email, "error", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		util.SendError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(createdUser)
+	// Handle Avatar Upload if present
+	file, header, err := r.FormFile("avatar")
+	if err == nil {
+		defer file.Close()
+		contentType := header.Header.Get("Content-Type")
+		if util.ValidateImage(contentType) == nil && util.ValidateImageSize(header.Size, 2) == nil {
+			url, uploadErr := h.svc.UploadAvatar(r.Context(), createdUser.ID, header.Filename, file, contentType)
+			if uploadErr == nil {
+				createdUser.AvatarURL = &url
+			}
+		}
+	}
+
+	util.SendData(w, http.StatusCreated, map[string]any{
+		"message": "Registration successful. Please verify your email.",
+		"user":    createdUser,
+	})
+}
+
+// VerifySignup godoc
+// @Summary Verify signup OTP
+// @Description Verify the OTP sent to email during signup and activate the account.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param body body map[string]any true "User ID and OTP"
+// @Success 200 {object} map[string]any
+// @Router /users/verify-signup [post]
+func (h *Handler) VerifySignup(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID int64  `json:"user_id"`
+		OTP    string `json:"otp"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		util.SendError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	token, user, err := h.svc.VerifySignup(r.Context(), req.UserID, req.OTP)
+	if err != nil {
+		util.SendError(w, http.StatusUnauthorized, err.Error())
+		return
+	}
+
+	util.SendData(w, http.StatusOK, map[string]any{
+		"token": token,
+		"user":  user,
+	})
+}
+
+func (h *Handler) ResendActivationOTP(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		UserID int64 `json:"user_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		util.SendError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+
+	// Verify user is actually inactive before sending
+	u, err := h.svc.GetProfile(r.Context(), req.UserID)
+	if err != nil || u == nil {
+		util.SendError(w, http.StatusNotFound, "user not found")
+		return
+	}
+	if u.IsActive {
+		util.SendError(w, http.StatusBadRequest, "account is already active")
+		return
+	}
+
+	err = h.svc.RequestOTP(r.Context(), req.UserID, "verify_signup")
+	if err != nil {
+		util.SendError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	util.SendOK(w, "Verification code resent successfully")
 }
 
 type loginReq struct {
@@ -95,13 +189,19 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	// Returns token + full user object in one shot — no second /profile call needed
 	token, user, err := h.svc.Login(r.Context(), req.Identifier, req.Password)
 	if err != nil {
-		slog.Warn("Login failed", "identifier", req.Identifier, "error", err)
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		if err.Error() == "user not found" {
+			util.SendError(w, http.StatusNotFound, "No account found with this email or phone")
+			return
+		}
+		if err.Error() == "incorrect password" {
+			util.SendError(w, http.StatusUnauthorized, "Incorrect password. Please try again.")
+			return
+		}
+		util.SendError(w, http.StatusUnauthorized, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]any{
+	util.SendData(w, http.StatusOK, map[string]any{
 		"token": token,
 		"user":  user,
 	})
@@ -205,19 +305,76 @@ func (h *Handler) UpdateUserRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Role != "admin" && req.Role != "buyer" {
-		http.Error(w, "invalid role", http.StatusBadRequest)
-		return
-	}
-
 	err := h.svc.UpdateRole(r.Context(), userID, req.Role)
 	if err != nil {
 		slog.Error("Admin failed to update role", "target_id", userID, "error", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
+}
+
+type bulkUpdateRoleReq struct {
+	IDs         []int64  `json:"ids"`
+	Role        string   `json:"role"`
+	Permissions []string `json:"permissions"`
+	OTP         string   `json:"otp"`
+	Password    string   `json:"password"`
+}
+
+// BulkUpdateUserRole godoc
+// @Summary Bulk update user roles
+// @Description Update the role of multiple users at once (admin only).
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body bulkUpdateRoleReq true "Bulk Update Details"
+// @Success 200 {string} string "OK"
+// @Router /users/bulk-role [post]
+func (h *Handler) BulkUpdateUserRole(w http.ResponseWriter, r *http.Request) {
+	userIDVal := r.Context().Value("user_id")
+	if userIDVal == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	adminID := userIDVal.(int64)
+
+	var req bulkUpdateRoleReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err := h.svc.BulkUpdateRole(r.Context(), adminID, req.IDs, req.Role, req.Permissions, req.OTP, req.Password)
+	if err != nil {
+		slog.Error("Admin failed to bulk update roles", "admin_id", adminID, "count", len(req.IDs), "error", err)
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// ListUsers godoc
+// @Summary List all users
+// @Description Retrieve a list of all registered users (admin only).
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} domain.User
+// @Router /users [get]
+func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
+	users, err := h.svc.ListUsers(r.Context())
+	if err != nil {
+		slog.Error("Failed to list users", "error", err)
+		http.Error(w, "failed to list users", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(users)
 }
 
 // UploadAvatar godoc
@@ -322,6 +479,16 @@ type otpRequest struct {
 	Purpose string `json:"purpose"` // e.g., "password", "email", "phone"
 }
 
+// RequestOTP godoc
+// @Summary Request an OTP
+// @Description Send a 6-digit OTP to user's email for a specific purpose (password, email, phone).
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body otpRequest true "OTP Purpose"
+// @Success 200 {string} string "OK"
+// @Router /users/otp/request [post]
 func (h *Handler) RequestOTP(w http.ResponseWriter, r *http.Request) {
 	var req otpRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -353,6 +520,16 @@ type secureUpdateReq struct {
 	Phone    *string `json:"phone"`
 }
 
+// SecureUpdate godoc
+// @Summary Securely update sensitive info
+// @Description Update password, email, or phone after OTP verification.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body secureUpdateReq true "Update details and OTP"
+// @Success 204 {string} string "No Content"
+// @Router /users/secure-update [patch]
 func (h *Handler) SecureUpdate(w http.ResponseWriter, r *http.Request) {
 	var req secureUpdateReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -407,6 +584,15 @@ type forgotPasswordReq struct {
 	Email string `json:"email"`
 }
 
+// ForgotPassword godoc
+// @Summary Request password reset
+// @Description Send a reset code to the user's email if they forgot their password.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param body body forgotPasswordReq true "User Email"
+// @Success 200 {string} string "OK"
+// @Router /users/forgot-password [post]
 func (h *Handler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	var req forgotPasswordReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -428,6 +614,15 @@ type resetPasswordReq struct {
 	Password string `json:"password"`
 }
 
+// ResetPassword godoc
+// @Summary Reset password with OTP
+// @Description Reset password using the code sent via ForgotPassword. Returns a new JWT token.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param body body resetPasswordReq true "Reset Details"
+// @Success 200 {object} map[string]any
+// @Router /users/reset-password [post]
 func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	var req resetPasswordReq
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -448,6 +643,14 @@ func (h *Handler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// DeleteUser godoc
+// @Summary Delete a user account
+// @Description Remove a user account and all associated data (admin only).
+// @Tags admin
+// @Security BearerAuth
+// @Param id path int true "User ID"
+// @Success 200 {string} string "OK"
+// @Router /users/{id} [delete]
 func (h *Handler) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	userID, _ := strconv.ParseInt(idStr, 10, 64)

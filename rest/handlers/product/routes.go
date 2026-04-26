@@ -12,10 +12,9 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 		r.Get("/", h.ListProducts)
 		r.Get("/{slug}", h.GetProduct)
 
-		// Admin only
 		r.With(
 			middleware.AuthMiddleware(jwtSecret, userSvc),
-			middleware.AdminMiddleware(),
+			middleware.PermissionMiddleware("products"),
 		).Group(func(r chi.Router) {
 			r.Post("/", h.CreateProduct)
 			r.Put("/{id}", h.UpdateProduct)
@@ -28,7 +27,7 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 		r.Get("/", h.ListCategories)
 		r.With(
 			middleware.AuthMiddleware(jwtSecret, userSvc),
-			middleware.AdminMiddleware(),
+			middleware.PermissionMiddleware("categories"),
 		).Group(func(r chi.Router) {
 			r.Post("/", h.CreateCategory)
 			r.Put("/{id}", h.UpdateCategory)
@@ -39,6 +38,6 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 
 	r.With(
 		middleware.AuthMiddleware(jwtSecret, userSvc),
-		middleware.AdminMiddleware(),
+		middleware.PermissionMiddleware("products"),
 	).Post("/upload", h.UploadFile)
 }

@@ -1,6 +1,8 @@
 package domain
 
-import "time"
+import (
+	"time"
+)
 
 type User struct {
 	ID           int64     `json:"id" db:"id"`
@@ -12,6 +14,7 @@ type User struct {
 	Role         string    `json:"role" db:"role"`
 	Address      *string   `json:"address" db:"address"`
 	AvatarURL    *string   `json:"avatar_url" db:"avatar_url"`
+	Permissions  []string  `json:"permissions" db:"-"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	IsActive     bool      `json:"is_active" db:"is_active"`
 }

@@ -20,6 +20,12 @@ type Service interface {
 	ForgotPassword(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, email string, code string, newPassword string) (string, *domain.User, error)
 	DeleteUser(ctx context.Context, userID int64) error
+	ListUsers(ctx context.Context) ([]*domain.User, error)
+	BulkUpdateRole(ctx context.Context, adminID int64, userIDs []int64, role string, permissions []string, otp string, password string) error
+	ActivateUser(ctx context.Context, userID int64) error
+
+	VerifySignup(ctx context.Context, userID int64, otp string) (string, *domain.User, error)
+	CleanupUnverifiedUsers(ctx context.Context) error
 }
 
 type UserRepo interface {
@@ -30,7 +36,11 @@ type UserRepo interface {
 	FindBySocialID(ctx context.Context, socialID string) (*domain.User, error)
 	UpdateProfile(ctx context.Context, id int64, fullName string, email *string, phone *string, address *string) error
 	UpdateAvatar(ctx context.Context, id int64, avatarURL string) error
-	UpdateRole(ctx context.Context, id int64, role string) error
+	UpdateRole(ctx context.Context, id int64, role string, permissions []string) error
 	UpdatePassword(ctx context.Context, id int64, passwordHash string) error
 	Delete(ctx context.Context, id int64) error
+	ListAll(ctx context.Context) ([]*domain.User, error)
+	BulkUpdateRole(ctx context.Context, ids []int64, role string, permissions []string) error
+	UpdateStatus(ctx context.Context, id int64, isActive bool) error
+	DeleteUnverified(ctx context.Context, olderThanHours int) error
 }

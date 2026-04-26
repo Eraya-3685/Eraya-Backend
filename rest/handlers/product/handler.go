@@ -1,11 +1,13 @@
 package product
 
 import (
+	"context"
 	"encoding/json"
 	"eraya/domain"
 	"eraya/infra/storage"
 	"eraya/product"
 	"eraya/util"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -183,7 +185,9 @@ func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 
 	products, count, err := h.svc.GetProducts(r.Context(), page, limit, search, categoryIDs, sort, minPrice, maxPrice)
 	if err != nil {
-		slog.Error("Failed to list products", "error", err)
+		if !errors.Is(err, context.Canceled) {
+			slog.Error("Failed to list products", "error", err)
+		}
 		util.SendError(w, http.StatusInternalServerError, "Internal server error")
 		return
 	}
@@ -284,6 +288,16 @@ func (h *Handler) DeleteProduct(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Product deleted successfully"))
 }
 
+// BulkDeleteProducts godoc
+// @Summary Bulk delete products
+// @Description Remove multiple products and their images by IDs (admin only).
+// @Tags products
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param ids body object true "Product IDs to delete"
+// @Success 200 {string} string "OK"
+// @Router /products/bulk [delete]
 func (h *Handler) BulkDeleteProducts(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs []int64 `json:"ids"`
@@ -351,6 +365,9 @@ func (h *Handler) CreateCategory(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) ListCategories(w http.ResponseWriter, r *http.Request) {
 	categories, err := h.svc.ListCategories(r.Context())
 	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			slog.Error("Failed to list categories", "error", err)
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -412,6 +429,16 @@ func (h *Handler) DeleteCategory(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Category deleted successfully"))
 }
 
+// BulkDeleteCategories godoc
+// @Summary Bulk delete categories
+// @Description Remove multiple categories by IDs (admin only).
+// @Tags categories
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param ids body object true "Category IDs to delete"
+// @Success 200 {string} string "OK"
+// @Router /categories/bulk [delete]
 func (h *Handler) BulkDeleteCategories(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		IDs []int `json:"ids"`
@@ -430,6 +457,16 @@ func (h *Handler) BulkDeleteCategories(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Categories deleted successfully"))
 }
+// UploadFile godoc
+// @Summary Upload a general image
+// @Description Upload an image to the 'categories' folder (admin only).
+// @Tags admin
+// @Accept multipart/form-data
+// @Produce json
+// @Security BearerAuth
+// @Param image formData file true "Image file"
+// @Success 200 {object} map[string]string
+// @Router /admin/upload [post]
 func (h *Handler) UploadFile(w http.ResponseWriter, r *http.Request) {
 	err := r.ParseMultipartForm(5 << 20) // 5MB
 	if err != nil {

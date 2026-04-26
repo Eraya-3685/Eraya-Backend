@@ -85,9 +85,9 @@ func (r *productRepo) List(ctx context.Context, page, limit int64, search string
 		nextParam++
 	}
 	if search != "" {
-		baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam)
-		args = append(args, "%"+search+"%")
-		nextParam++
+		baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam+1)
+		args = append(args, "%"+search+"%", "%"+search+"%")
+		nextParam += 2
 	}
 
 	orderBy := "p.created_at DESC"
@@ -200,9 +200,9 @@ func (r *productRepo) Count(ctx context.Context, search string, categoryIDs []in
 		nextParam++
 	}
 	if search != "" {
-		baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam)
-		args = append(args, "%"+search+"%")
-		nextParam++
+		baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam+1)
+		args = append(args, "%"+search+"%", "%"+search+"%")
+		nextParam += 2
 	}
 
 	var count int64

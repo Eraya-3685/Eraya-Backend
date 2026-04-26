@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"time"
+	"context"
 )
 
 func keepAlive(url string) {
@@ -36,6 +37,19 @@ func keepAlive(url string) {
 		} else {
 			log.Printf("Keep-alive ping failed: %v", err)
 		}
+	}
+}
+func startCleanupWorker(svc user.Service) {
+	ticker := time.NewTicker(6 * time.Hour) // Run every 6 hours
+	for range ticker.C {
+		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
+		err := svc.CleanupUnverifiedUsers(ctx)
+		if err != nil {
+			slog.Error("Cleanup worker failed", "error", err)
+		} else {
+			slog.Info("Cleanup worker completed successfully")
+		}
+		cancel()
 	}
 }
 
@@ -65,7 +79,7 @@ func Serve() {
 
 	userRepo := repo.NewUserRepo(dbCon)
 	userService := user.NewService(userRepo, cnf.JwtSecretKey, storageService, redisDB, mailer)
-	userHandler := user_handler.NewHandler(userService, storageService)
+	userHandler := user_handler.NewHandler(userService, storageService, cnf.JwtSecretKey)
 
 	productRepo := repo.NewProductRepo(dbCon)
 	productCache := repo.NewProductCache(redisDB)
@@ -101,6 +115,8 @@ func Serve() {
 	if cnf.BaseURL != "" && cnf.BaseURL != "http://localhost:8080/" {
 		go keepAlive(cnf.BaseURL)
 	}
+
+	go startCleanupWorker(userService)
 
 	server.Start()
 }

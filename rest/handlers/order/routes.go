@@ -21,7 +21,7 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 	})
 
 	r.Route("/admin/orders", func(r chi.Router) {
-		r.Use(middleware.AuthMiddleware(jwtSecret, userSvc), middleware.AdminMiddleware())
+		r.Use(middleware.AuthMiddleware(jwtSecret, userSvc), middleware.PermissionMiddleware("orders"))
 		r.Get("/", h.AdminGetOrders)
 		r.Post("/{id}/confirm", h.AdminConfirmOrder)
 		r.Delete("/{id}", h.AdminDeleteOrder)
