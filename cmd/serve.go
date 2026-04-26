@@ -15,9 +15,13 @@ import (
 	order_handler "eraya/rest/handlers/order"
 	product_handler "eraya/rest/handlers/product"
 	review_handler "eraya/rest/handlers/review"
+	settings_handler "eraya/rest/handlers/settings"
 	user_handler "eraya/rest/handlers/user"
+	wishlist_handler "eraya/rest/handlers/wishlist"
 	"eraya/review"
+	"eraya/settings"
 	"eraya/user"
+	"eraya/wishlist"
 	"log"
 	"log/slog"
 
@@ -83,12 +87,16 @@ func Serve() {
 
 	productRepo := repo.NewProductRepo(dbCon)
 	productCache := repo.NewProductCache(redisDB)
-	productService := product.NewService(productRepo, productCache)
+	productService := product.NewService(productRepo, productCache, storageService)
 	productHandler := product_handler.NewHandler(productService, storageService)
 
 	cartRepo := repo.NewCartRepo(dbCon)
 	orderRepo := repo.NewOrderRepo(dbCon)
-	orderService := order.NewService(cartRepo, orderRepo, productService)
+	settingsRepo := repo.NewSettingsRepo(dbCon)
+	settingsService := settings.NewService(settingsRepo)
+	settingsHandler := settings_handler.NewHandler(settingsService)
+
+	orderService := order.NewService(cartRepo, orderRepo, productService, settingsService)
 	orderHandler := order_handler.NewHandler(orderService)
 
 	orderVerifier := repo.NewOrderVerifier(dbCon)
@@ -101,6 +109,10 @@ func Serve() {
 	chatService := chat_pkg.NewService(chatRepo, chatPubSub)
 	chatHandler := chat_handler.NewWebSocketHandler(chatService)
 
+	wishlistRepo := repo.NewWishlistRepo(dbCon)
+	wishlistService := wishlist.NewService(wishlistRepo)
+	wishlistHandler := wishlist_handler.NewHandler(wishlistService)
+
 	server := rest.NewServer(
 		cnf.HttpPort,
 		cnf.JwtSecretKey,
@@ -110,6 +122,8 @@ func Serve() {
 		orderHandler,
 		reviewHandler,
 		chatHandler,
+		wishlistHandler,
+		settingsHandler,
 	)
 
 	if cnf.BaseURL != "" && cnf.BaseURL != "http://localhost:8080/" {

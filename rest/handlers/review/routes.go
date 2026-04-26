@@ -16,4 +16,12 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 			middleware.AdminMiddleware(),
 		).Delete("/{id}", h.DeleteReview)
 	})
+
+	r.Route("/admin/reviews", func(r chi.Router) {
+		r.Use(middleware.AuthMiddleware(jwtSecret, userSvc))
+		r.Use(middleware.AdminMiddleware())
+
+		r.Get("/", h.ListAllReviews)
+		r.Post("/{id}/approve", h.ApproveReview)
+	})
 }

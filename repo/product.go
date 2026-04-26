@@ -146,14 +146,44 @@ func (r *productRepo) List(ctx context.Context, page, limit int64, search string
 	return products, nil
 }
 
-func (r *productRepo) BulkDeleteProducts(ctx context.Context, ids []int64) error {
-	query, args, err := sqlx.In("DELETE FROM products WHERE id IN (?)", ids)
+func (r *productRepo) BulkDeleteProducts(ctx context.Context, ids []int64) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	// 1. Fetch all image URLs for these products
+	query, args, err := sqlx.In("SELECT image_url FROM product_images WHERE product_id IN (?)", ids)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	query = r.db.Rebind(query)
-	_, err = r.db.ExecContext(ctx, query, args...)
-	return err
+	var images []string
+	err = r.db.SelectContext(ctx, &images, query, args...)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// 2. Delete images and links
+	delImgQuery, delImgArgs, _ := sqlx.In("DELETE FROM product_images WHERE product_id IN (?)", ids)
+	_, _ = tx.ExecContext(ctx, r.db.Rebind(delImgQuery), delImgArgs...)
+
+	delCatQuery, delCatArgs, _ := sqlx.In("DELETE FROM product_categories WHERE product_id IN (?)", ids)
+	_, _ = tx.ExecContext(ctx, r.db.Rebind(delCatQuery), delCatArgs...)
+
+	// 3. Delete products
+	delProdQuery, delProdArgs, _ := sqlx.In("DELETE FROM products WHERE id IN (?)", ids)
+	_, err = tx.ExecContext(ctx, r.db.Rebind(delProdQuery), delProdArgs...)
+	if err != nil {
+		return nil, err
+	}
+
+	return images, tx.Commit()
 }
 
 func (r *productRepo) DecrementStock(ctx context.Context, id int64, quantity int) error {
@@ -331,9 +361,37 @@ func (r *productRepo) Update(ctx context.Context, p *domain.Product) ([]string, 
 	return orphanedURLs, tx.Commit()
 }
 
-func (r *productRepo) Delete(ctx context.Context, id int64) error {
-	_, err := r.db.ExecContext(ctx, "DELETE FROM products WHERE id = $1", id)
-	return err
+func (r *productRepo) Delete(ctx context.Context, id int64) ([]string, error) {
+	// 1. Fetch all images for this product before deleting
+	var images []string
+	err := r.db.SelectContext(ctx, &images, "SELECT image_url FROM product_images WHERE product_id = $1", id)
+	if err != nil {
+		return nil, err
+	}
+
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer tx.Rollback()
+
+	// 2. Delete links first
+	_, err = tx.ExecContext(ctx, "DELETE FROM product_images WHERE product_id = $1", id)
+	if err != nil {
+		return nil, err
+	}
+	_, err = tx.ExecContext(ctx, "DELETE FROM product_categories WHERE product_id = $1", id)
+	if err != nil {
+		return nil, err
+	}
+
+	// 3. Delete product
+	_, err = tx.ExecContext(ctx, "DELETE FROM products WHERE id = $1", id)
+	if err != nil {
+		return nil, err
+	}
+
+	return images, tx.Commit()
 }
 
 // Categories
@@ -389,54 +447,62 @@ func (r *productRepo) UpdateCategory(ctx context.Context, c *domain.Category) (*
 	return &updated, nil
 }
 
-func (r *productRepo) DeleteCategory(ctx context.Context, id int) error {
+func (r *productRepo) DeleteCategory(ctx context.Context, id int) (string, error) {
+	// 1. Fetch image URL before deleting
+	var imageURL string
+	_ = r.db.GetContext(ctx, &imageURL, "SELECT COALESCE(image_url, '') FROM categories WHERE id = $1", id)
+
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return err
+		return "", err
 	}
 	// First remove all product links to avoid FK constraint
 	_, err = tx.ExecContext(ctx, "DELETE FROM product_categories WHERE category_id = $1", id)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return "", err
 	}
 	// Then delete the category
 	_, err = tx.ExecContext(ctx, "DELETE FROM categories WHERE id = $1", id)
 	if err != nil {
 		tx.Rollback()
-		return err
+		return "", err
 	}
-	return tx.Commit()
+	return imageURL, tx.Commit()
 }
 
-func (r *productRepo) BulkDeleteCategories(ctx context.Context, ids []int) error {
+func (r *productRepo) BulkDeleteCategories(ctx context.Context, ids []int) ([]string, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+
+	// 1. Fetch image URLs
+	query, args, err := sqlx.In("SELECT COALESCE(image_url, '') FROM categories WHERE id IN (?)", ids)
+	if err != nil {
+		return nil, err
+	}
+	var images []string
+	err = r.db.SelectContext(ctx, &images, r.db.Rebind(query), args...)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, err := r.db.BeginTxx(ctx, nil)
 	if err != nil {
-		return err
+		return nil, err
 	}
+	defer tx.Rollback()
+
 	// Remove product_categories links first
-	unlinkQuery, unlinkArgs, err := sqlx.In("DELETE FROM product_categories WHERE category_id IN (?)", ids)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-	unlinkQuery = r.db.Rebind(unlinkQuery)
-	_, err = tx.ExecContext(ctx, unlinkQuery, unlinkArgs...)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
+	unlinkQuery, unlinkArgs, _ := sqlx.In("DELETE FROM product_categories WHERE category_id IN (?)", ids)
+	_, _ = tx.ExecContext(ctx, r.db.Rebind(unlinkQuery), unlinkArgs...)
+
 	// Then delete the categories
-	query, args, err := sqlx.In("DELETE FROM categories WHERE id IN (?)", ids)
+	query, args, _ = sqlx.In("DELETE FROM categories WHERE id IN (?)", ids)
+	_, err = tx.ExecContext(ctx, r.db.Rebind(query), args...)
 	if err != nil {
-		tx.Rollback()
-		return err
+		return nil, err
 	}
-	query = r.db.Rebind(query)
-	_, err = tx.ExecContext(ctx, query, args...)
-	if err != nil {
-		tx.Rollback()
-		return err
-	}
-	return tx.Commit()
+
+	return images, tx.Commit()
 }

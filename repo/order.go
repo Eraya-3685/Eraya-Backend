@@ -3,7 +3,6 @@ package repo
 import (
 	"context"
 	"eraya/domain"
-	"eraya/order"
 	"fmt"
 
 	"github.com/jmoiron/sqlx"
@@ -13,7 +12,7 @@ type orderRepo struct {
 	db *sqlx.DB
 }
 
-func NewOrderRepo(db *sqlx.DB) order.OrderRepo {
+func NewOrderRepo(db *sqlx.DB) domain.OrderRepo {
 	return &orderRepo{db: db}
 }
 
@@ -80,7 +79,12 @@ func (r *orderRepo) ListByUser(ctx context.Context, userID int64) ([]*domain.Ord
 }
 
 func (r *orderRepo) ListAll(ctx context.Context) ([]*domain.Order, error) {
-	query := `SELECT * FROM orders ORDER BY created_at DESC`
+	query := `
+		SELECT o.*, u.full_name as "user.full_name", u.email as "user.email"
+		FROM orders o
+		JOIN users u ON o.user_id = u.id
+		ORDER BY o.created_at DESC
+	`
 	var orders []*domain.Order
 	err := r.db.SelectContext(ctx, &orders, query)
 	return orders, err

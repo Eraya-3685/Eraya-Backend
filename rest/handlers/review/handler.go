@@ -87,6 +87,48 @@ func (h *Handler) GetProductReviews(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(reviews)
 }
 
+// ListAllReviews godoc
+// @Summary List all reviews
+// @Description Retrieve all reviews (admin only).
+// @Tags reviews
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {array} domain.Review
+// @Router /admin/reviews [get]
+func (h *Handler) ListAllReviews(w http.ResponseWriter, r *http.Request) {
+	reviews, err := h.svc.ListAllReviews(r.Context())
+	if err != nil {
+		slog.Error("Failed to list all reviews", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(reviews)
+}
+
+// ApproveReview godoc
+// @Summary Approve a review
+// @Description Approve a pending review (admin only).
+// @Tags reviews
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Review ID"
+// @Success 200 {string} string "OK"
+// @Router /admin/reviews/{id}/approve [post]
+func (h *Handler) ApproveReview(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+
+	if err := h.svc.ApproveReview(r.Context(), id); err != nil {
+		slog.Error("Failed to approve review", "id", id, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Review approved successfully"))
+}
+
 // DeleteReview godoc
 // @Summary Delete a review
 // @Description Remove a review (admin only).

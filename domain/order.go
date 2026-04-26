@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 type Order struct {
 	ID              int64      `json:"id" db:"id"`
@@ -18,6 +21,7 @@ type Order struct {
 	DeliveredAt     *time.Time `json:"delivered_at" db:"delivered_at"`
 
 	Items []OrderItem `json:"items,omitempty" db:"-"`
+	User  User        `json:"user,omitempty" db:"user"`
 }
 
 type OrderItem struct {
@@ -28,4 +32,19 @@ type OrderItem struct {
 	PriceAtPurchase float64 `json:"price_at_purchase" db:"price_at_purchase"`
 
 	Product *Product `json:"product,omitempty" db:"-"`
+}
+
+type CartRepo interface {
+	Add(ctx context.Context, item *CartItem) error
+	List(ctx context.Context, userID int64) ([]*CartItem, error)
+	Clear(ctx context.Context, userID int64) error
+}
+
+type OrderRepo interface {
+	Create(ctx context.Context, order *Order, items []*OrderItem) (*Order, error)
+	ListByUser(ctx context.Context, userID int64) ([]*Order, error)
+	ListAll(ctx context.Context) ([]*Order, error)
+	FindByID(ctx context.Context, id int64) (*Order, error)
+	UpdateStatus(ctx context.Context, id int64, status, paymentStatus string) error
+	Delete(ctx context.Context, id int64) error
 }

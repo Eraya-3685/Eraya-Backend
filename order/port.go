@@ -8,7 +8,7 @@ import (
 type Service interface {
 	AddToCart(ctx context.Context, userID, productID int64, quantity int) error
 	GetCart(ctx context.Context, userID int64) ([]*domain.CartItem, error)
-	Checkout(ctx context.Context, userID int64, paymentMethod, shippingAddress string) (*domain.Order, error)
+	Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string) (*domain.Order, error)
 	GetOrders(ctx context.Context, userID int64) ([]*domain.Order, error)
 
 	// Admin

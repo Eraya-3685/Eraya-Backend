@@ -12,5 +12,5 @@ type Review struct {
 	IsVerified bool      `json:"is_verified" db:"is_verified"`
 	IsApproved bool      `json:"is_approved" db:"is_approved"`
 
-	User *User `json:"user,omitempty" db:"-"`
+	User *User `json:"user,omitempty" db:"user"`
 }

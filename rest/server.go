@@ -5,7 +5,9 @@ import (
 	order_handler "eraya/rest/handlers/order"
 	product_handler "eraya/rest/handlers/product"
 	review_handler "eraya/rest/handlers/review"
+	settings_handler "eraya/rest/handlers/settings"
 	user_handler "eraya/rest/handlers/user"
+	wishlist_handler "eraya/rest/handlers/wishlist"
 	erayamiddleware "eraya/rest/middlewares"
 	"eraya/user"
 	"fmt"
@@ -29,6 +31,8 @@ type Server struct {
 	orderHandler   *order_handler.Handler
 	reviewHandler  *review_handler.Handler
 	chatHandler    *chat_handler.WebSocketHandler
+	wishlistHandler *wishlist_handler.Handler
+	settingsHandler *settings_handler.Handler
 }
 
 func NewServer(
@@ -40,6 +44,8 @@ func NewServer(
 	orderHandler *order_handler.Handler,
 	reviewHandler *review_handler.Handler,
 	chatHandler *chat_handler.WebSocketHandler,
+	wishlistHandler *wishlist_handler.Handler,
+	settingsHandler *settings_handler.Handler,
 ) *Server {
 	return &Server{
 		port:           port,
@@ -50,6 +56,8 @@ func NewServer(
 		orderHandler:   orderHandler,
 		reviewHandler:  reviewHandler,
 		chatHandler:    chatHandler,
+		wishlistHandler: wishlistHandler,
+		settingsHandler: settingsHandler,
 	}
 }
 
@@ -112,6 +120,8 @@ func (server *Server) Start() {
 		order_handler.RegisterRoutes(r, server.orderHandler, server.jwtSecret, server.userSvc)
 		review_handler.RegisterRoutes(r, server.reviewHandler, server.jwtSecret, server.userSvc)
 		chat_handler.RegisterRoutes(r, server.chatHandler, server.jwtSecret, server.userSvc)
+		wishlist_handler.RegisterRoutes(r, server.wishlistHandler, server.jwtSecret, server.userSvc)
+		settings_handler.RegisterRoutes(r, server.settingsHandler, server.jwtSecret, server.userSvc)
 	})
 
 	wrappedMux := manager.WrapMux(mux, manager.GetGlobalMiddlewares()...)

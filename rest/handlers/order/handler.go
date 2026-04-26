@@ -3,6 +3,7 @@ package order
 import (
 	"context"
 	"encoding/json"
+	"eraya/domain"
 	"eraya/order"
 	"errors"
 	"log/slog"
@@ -92,9 +93,15 @@ func (h *Handler) GetCart(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(items)
 }
 
+type checkoutItem struct {
+	ProductID int64 `json:"product_id"`
+	Quantity  int   `json:"quantity"`
+}
+
 type checkoutReq struct {
-	PaymentMethod   string `json:"payment_method"`
-	ShippingAddress string `json:"shipping_address"`
+	Items           []checkoutItem `json:"items"`
+	PaymentMethod   string         `json:"payment_method"`
+	ShippingAddress string         `json:"shipping_address"`
 }
 
 // Checkout godoc
@@ -123,7 +130,15 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	order, err := h.svc.Checkout(r.Context(), userID, req.PaymentMethod, req.ShippingAddress)
+	items := make([]domain.CartItem, len(req.Items))
+	for i, it := range req.Items {
+		items[i] = domain.CartItem{
+			ProductID: it.ProductID,
+			Quantity:  it.Quantity,
+		}
+	}
+
+	order, err := h.svc.Checkout(r.Context(), userID, items, req.PaymentMethod, req.ShippingAddress)
 	if err != nil {
 		slog.Error("Checkout failed", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -237,4 +252,3 @@ func (h *Handler) AdminDeleteOrder(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Order deleted successfully"))
 }
-

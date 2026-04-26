@@ -280,14 +280,12 @@ func (s *service) UploadAvatar(ctx context.Context, userID int64, filename strin
 		return "", err
 	}
 
-	if err == nil {
-		s.redis.Del(ctx, fmt.Sprintf("user:profile:%d", userID))
-	}
-
-	// 4. Async cleanup of old avatar from storage
+	// 4. Delete old avatar if it exists
 	if oldAvatarURL != "" {
 		go s.storage.DeleteFile(oldAvatarURL)
 	}
+
+	s.redis.Del(ctx, fmt.Sprintf("user:profile:%d", userID))
 
 	return url, nil
 }

@@ -38,14 +38,33 @@ func (s *service) CreateReview(ctx context.Context, userID, productID int64, rat
 		Rating:     rating,
 		Comment:    &comment,
 		IsVerified: true,
-		IsApproved: true,
+		IsApproved: false,
 	}
 
 	return s.repo.Create(ctx, r)
 }
 
 func (s *service) GetProductReviews(ctx context.Context, productID int64) ([]*domain.Review, error) {
-	return s.repo.ListByProduct(ctx, productID)
+	all, err := s.repo.ListByProduct(ctx, productID)
+	if err != nil {
+		return nil, err
+	}
+	// Filter to only approved reviews for public display
+	var approved []*domain.Review
+	for _, r := range all {
+		if r.IsApproved {
+			approved = append(approved, r)
+		}
+	}
+	return approved, nil
+}
+
+func (s *service) ListAllReviews(ctx context.Context) ([]*domain.Review, error) {
+	return s.repo.ListAll(ctx)
+}
+
+func (s *service) ApproveReview(ctx context.Context, id int64) error {
+	return s.repo.Approve(ctx, id)
 }
 
 func (s *service) DeleteReview(ctx context.Context, id int64) error {

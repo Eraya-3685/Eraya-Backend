@@ -3,18 +3,21 @@ package product
 import (
 	"context"
 	"eraya/domain"
+	"eraya/infra/storage"
 	"log/slog"
 )
 
 type service struct {
-	repo  ProductRepo
-	cache ProductCache
+	repo    ProductRepo
+	cache   ProductCache
+	storage *storage.StorageService
 }
 
-func NewService(repo ProductRepo, cache ProductCache) Service {
+func NewService(repo ProductRepo, cache ProductCache, storage *storage.StorageService) Service {
 	return &service{
-		repo:  repo,
-		cache: cache,
+		repo:    repo,
+		cache:   cache,
+		storage: storage,
 	}
 }
 
@@ -53,22 +56,40 @@ func (s *service) UpdateProduct(ctx context.Context, p *domain.Product) ([]strin
 	orphanedURLs, err := s.repo.Update(ctx, p)
 	if err == nil {
 		go s.invalidateCache(context.Background())
+		// Cleanup orphaned images from storage
+		for _, url := range orphanedURLs {
+			if url != "" {
+				go s.storage.DeleteFile(url)
+			}
+		}
 	}
 	return orphanedURLs, err
 }
 
 func (s *service) DeleteProduct(ctx context.Context, id int64) error {
-	err := s.repo.Delete(ctx, id)
+	imageURLs, err := s.repo.Delete(ctx, id)
 	if err == nil {
 		go s.invalidateCache(context.Background())
+		// Cleanup images from storage
+		for _, url := range imageURLs {
+			if url != "" {
+				go s.storage.DeleteFile(url)
+			}
+		}
 	}
 	return err
 }
 
 func (s *service) BulkDeleteProducts(ctx context.Context, ids []int64) error {
-	err := s.repo.BulkDeleteProducts(ctx, ids)
+	imageURLs, err := s.repo.BulkDeleteProducts(ctx, ids)
 	if err == nil {
 		go s.invalidateCache(context.Background())
+		// Cleanup images from storage
+		for _, url := range imageURLs {
+			if url != "" {
+				go s.storage.DeleteFile(url)
+			}
+		}
 	}
 	return err
 }
@@ -91,15 +112,49 @@ func (s *service) ListCategories(ctx context.Context) ([]*domain.Category, error
 }
 
 func (s *service) UpdateCategory(ctx context.Context, category *domain.Category) (*domain.Category, error) {
-	return s.repo.UpdateCategory(ctx, category)
+	// Fetch old category to check for image change
+	oldCatList, _ := s.repo.ListCategories(ctx)
+	var oldImg string
+	for _, c := range oldCatList {
+		if c.ID == category.ID {
+			if c.ImageURL != nil {
+				oldImg = *c.ImageURL
+			}
+			break
+		}
+	}
+
+	updated, err := s.repo.UpdateCategory(ctx, category)
+	if err == nil && oldImg != "" {
+		newImg := ""
+		if category.ImageURL != nil {
+			newImg = *category.ImageURL
+		}
+		if oldImg != newImg {
+			go s.storage.DeleteFile(oldImg)
+		}
+	}
+	return updated, err
 }
 
 func (s *service) DeleteCategory(ctx context.Context, id int) error {
-	return s.repo.DeleteCategory(ctx, id)
+	imageURL, err := s.repo.DeleteCategory(ctx, id)
+	if err == nil && imageURL != "" {
+		go s.storage.DeleteFile(imageURL)
+	}
+	return err
 }
 
 func (s *service) BulkDeleteCategories(ctx context.Context, ids []int) error {
-	return s.repo.BulkDeleteCategories(ctx, ids)
+	imageURLs, err := s.repo.BulkDeleteCategories(ctx, ids)
+	if err == nil {
+		for _, url := range imageURLs {
+			if url != "" {
+				go s.storage.DeleteFile(url)
+			}
+		}
+	}
+	return err
 }
 
 func (s *service) invalidateCache(ctx context.Context) {

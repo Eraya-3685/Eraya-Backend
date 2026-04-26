@@ -3,7 +3,6 @@ package repo
 import (
 	"context"
 	"eraya/domain"
-	"eraya/order"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -12,7 +11,7 @@ type cartRepo struct {
 	db *sqlx.DB
 }
 
-func NewCartRepo(db *sqlx.DB) order.CartRepo {
+func NewCartRepo(db *sqlx.DB) domain.CartRepo {
 	return &cartRepo{db: db}
 }
 

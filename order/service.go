@@ -4,6 +4,7 @@ import (
 	"context"
 	"eraya/domain"
 	"eraya/product"
+	"eraya/settings"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -14,16 +15,18 @@ import (
 )
 
 type service struct {
-	cartRepo   CartRepo
-	orderRepo  OrderRepo
-	productSvc product.Service
+	cartRepo    domain.CartRepo
+	orderRepo   domain.OrderRepo
+	productSvc  product.Service
+	settingsSvc settings.Service
 }
 
-func NewService(cartRepo CartRepo, orderRepo OrderRepo, productSvc product.Service) Service {
+func NewService(cartRepo domain.CartRepo, orderRepo domain.OrderRepo, productSvc product.Service, settingsSvc settings.Service) Service {
 	return &service{
-		cartRepo:   cartRepo,
-		orderRepo:  orderRepo,
-		productSvc: productSvc,
+		cartRepo:    cartRepo,
+		orderRepo:   orderRepo,
+		productSvc:  productSvc,
+		settingsSvc: settingsSvc,
 	}
 }
 
@@ -40,11 +43,12 @@ func (s *service) GetCart(ctx context.Context, userID int64) ([]*domain.CartItem
 	return s.cartRepo.List(ctx, userID)
 }
 
-func (s *service) Checkout(ctx context.Context, userID int64, paymentMethod, shippingAddress string) (*domain.Order, error) {
-	cartItems, err := s.cartRepo.List(ctx, userID)
-	if err != nil || len(cartItems) == 0 {
-		return nil, errors.New("cart is empty")
+func (s *service) Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string) (*domain.Order, error) {
+	if len(items) == 0 {
+		return nil, errors.New("order must have items")
 	}
+
+	cartItems := items
 
 	var total float64
 	var orderItems []*domain.OrderItem
@@ -90,9 +94,28 @@ func (s *service) Checkout(ctx context.Context, userID int64, paymentMethod, shi
 		return nil, err
 	}
 
+	// Fetch store settings for shipping and tax calculation
+	st, err := s.settingsSvc.GetSettings(ctx)
+	if err != nil {
+		// Fallback to defaults if settings fetch fails
+		st = &domain.StoreSettings{
+			FreeShippingThreshold: 1999,
+			StandardDeliveryFee:   85,
+			TaxPercentage:         5,
+		}
+	}
+
+	shippingFee := st.StandardDeliveryFee
+	if total >= st.FreeShippingThreshold {
+		shippingFee = 0
+	}
+
+	tax := total * (st.TaxPercentage / 100)
+	grandTotal := total + shippingFee + tax
+
 	order := &domain.Order{
 		UserID:          userID,
-		TotalPrice:      total,
+		TotalPrice:      grandTotal,
 		PaymentMethod:   paymentMethod,
 		PaymentStatus:   "pending",
 		OrderStatus:     "pending",

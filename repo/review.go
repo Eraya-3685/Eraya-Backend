@@ -18,23 +18,72 @@ func NewReviewRepo(db *sqlx.DB) review.ReviewRepo {
 }
 
 func (r *reviewRepo) Create(ctx context.Context, rev *domain.Review) (*domain.Review, error) {
-	tx, err := r.db.BeginTxx(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
 	query := `
-		INSERT INTO reviews (product_id, user_id, rating, comment)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO reviews (product_id, user_id, rating, comment, is_verified, is_approved)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id, created_at
 	`
-	err = tx.QueryRowContext(ctx, query, rev.ProductID, rev.UserID, rev.Rating, rev.Comment).
+	err := r.db.QueryRowContext(ctx, query, rev.ProductID, rev.UserID, rev.Rating, rev.Comment, rev.IsVerified, rev.IsApproved).
 		Scan(&rev.ID, &rev.CreatedAt)
 	if err != nil {
-		tx.Rollback()
 		return nil, fmt.Errorf("failed to create review: %w", err)
 	}
 
+	return rev, nil
+}
+
+func (r *reviewRepo) ListByProduct(ctx context.Context, productID int64) ([]*domain.Review, error) {
+	query := `
+		SELECT r.*, u.full_name as "user.full_name", u.id as "user.id"
+		FROM reviews r
+		JOIN users u ON r.user_id = u.id
+		WHERE r.product_id = $1 AND r.is_approved = true
+		ORDER BY r.created_at DESC
+	`
+	var reviews []*domain.Review
+	err := r.db.SelectContext(ctx, &reviews, query, productID)
+	return reviews, err
+}
+
+func (r *reviewRepo) ListAll(ctx context.Context) ([]*domain.Review, error) {
+	query := `
+		SELECT r.*, u.full_name as "user.full_name", u.id as "user.id"
+		FROM reviews r
+		JOIN users u ON r.user_id = u.id
+		ORDER BY r.created_at DESC
+	`
+	var reviews []*domain.Review
+	err := r.db.SelectContext(ctx, &reviews, query)
+	return reviews, err
+}
+
+func (r *reviewRepo) Approve(ctx context.Context, id int64) error {
+	tx, err := r.db.BeginTxx(ctx, nil)
+	if err != nil {
+		return err
+	}
+
+	// 1. Check if already approved
+	var rev domain.Review
+	err = tx.GetContext(ctx, &rev, "SELECT * FROM reviews WHERE id = $1 FOR UPDATE", id)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	if rev.IsApproved {
+		tx.Rollback()
+		return nil // Already approved, nothing to do
+	}
+
+	// 2. Mark as approved
+	_, err = tx.ExecContext(ctx, "UPDATE reviews SET is_approved = true WHERE id = $1", id)
+	if err != nil {
+		tx.Rollback()
+		return err
+	}
+
+	// 3. Update product rating stats
 	updateProductQuery := `
 		UPDATE products 
 		SET total_reviews = total_reviews + 1, 
@@ -44,18 +93,10 @@ func (r *reviewRepo) Create(ctx context.Context, rev *domain.Review) (*domain.Re
 	_, err = tx.ExecContext(ctx, updateProductQuery, rev.Rating, rev.ProductID)
 	if err != nil {
 		tx.Rollback()
-		return nil, err
+		return err
 	}
 
-	err = tx.Commit()
-	return rev, err
-}
-
-func (r *reviewRepo) ListByProduct(ctx context.Context, productID int64) ([]*domain.Review, error) {
-	query := `SELECT * FROM reviews WHERE product_id = $1 ORDER BY created_at DESC`
-	var reviews []*domain.Review
-	err := r.db.SelectContext(ctx, &reviews, query, productID)
-	return reviews, err
+	return tx.Commit()
 }
 
 func (r *reviewRepo) Delete(ctx context.Context, id int64) error {
@@ -64,9 +105,9 @@ func (r *reviewRepo) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 
-	// Fetch review first to get rating and product ID
+	// Fetch review first
 	var rev domain.Review
-	err = tx.GetContext(ctx, &rev, "SELECT * FROM reviews WHERE id = $1", id)
+	err = tx.GetContext(ctx, &rev, "SELECT * FROM reviews WHERE id = $1 FOR UPDATE", id)
 	if err != nil {
 		tx.Rollback()
 		return err
@@ -79,21 +120,23 @@ func (r *reviewRepo) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 
-	// Update product rating stats
-	updateProductQuery := `
-		UPDATE products 
-		SET total_reviews = total_reviews - 1, 
-			average_rating = CASE 
-				WHEN total_reviews - 1 > 0 
-				THEN ((average_rating * total_reviews) - $1) / (total_reviews - 1)
-				ELSE 0 
-			END
-		WHERE id = $2
-	`
-	_, err = tx.ExecContext(ctx, updateProductQuery, rev.Rating, rev.ProductID)
-	if err != nil {
-		tx.Rollback()
-		return err
+	// Update product rating stats ONLY IF it was approved
+	if rev.IsApproved {
+		updateProductQuery := `
+			UPDATE products 
+			SET total_reviews = total_reviews - 1, 
+				average_rating = CASE 
+					WHEN total_reviews - 1 > 0 
+					THEN ((average_rating * total_reviews) - $1) / (total_reviews - 1)
+					ELSE 0 
+				END
+			WHERE id = $2
+		`
+		_, err = tx.ExecContext(ctx, updateProductQuery, rev.Rating, rev.ProductID)
+		if err != nil {
+			tx.Rollback()
+			return err
+		}
 	}
 
 	return tx.Commit()
