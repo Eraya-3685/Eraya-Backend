@@ -79,7 +79,7 @@ func Serve() {
 	}
 
 	storageService := storage.NewStorageService(cnf.Supabase)
-	mailer := mail.NewMailer(cnf.SMTP)
+	mailer := mail.NewMailer(cnf.SMTP, cnf.FrontendURL)
 
 	userRepo := repo.NewUserRepo(dbCon)
 	userService := user.NewService(userRepo, cnf.JwtSecretKey, storageService, redisDB, mailer)
@@ -96,7 +96,7 @@ func Serve() {
 	settingsService := settings.NewService(settingsRepo)
 	settingsHandler := settings_handler.NewHandler(settingsService)
 
-	orderService := order.NewService(cartRepo, orderRepo, productService, settingsService)
+	orderService := order.NewService(cartRepo, orderRepo, productService, settingsService, mailer, userService)
 	orderHandler := order_handler.NewHandler(orderService)
 
 	orderVerifier := repo.NewOrderVerifier(dbCon)

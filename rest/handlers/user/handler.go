@@ -135,6 +135,15 @@ func (h *Handler) VerifySignup(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ResendActivationOTP godoc
+// @Summary Resend activation OTP
+// @Description Resend the account activation code to the user's email.
+// @Tags users
+// @Accept json
+// @Produce json
+// @Param body body map[string]int64 true "User ID"
+// @Success 200 {string} string "OK"
+// @Router /users/resend-activation [post]
 func (h *Handler) ResendActivationOTP(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		UserID int64 `json:"user_id"`

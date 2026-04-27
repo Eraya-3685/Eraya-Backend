@@ -103,6 +103,14 @@ func (s *service) DecrementStock(ctx context.Context, id int64, quantity int) er
 	return err
 }
 
+func (s *service) IncrementStock(ctx context.Context, id int64, quantity int) error {
+	err := s.repo.IncrementStock(ctx, id, quantity)
+	if err == nil {
+		go s.invalidateCache(context.Background())
+	}
+	return err
+}
+
 func (s *service) CreateCategory(ctx context.Context, c *domain.Category) (*domain.Category, error) {
 	return s.repo.CreateCategory(ctx, c)
 }

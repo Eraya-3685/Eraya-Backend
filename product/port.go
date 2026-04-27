@@ -14,6 +14,7 @@ type Service interface {
 	DeleteProduct(ctx context.Context, id int64) error
 	BulkDeleteProducts(ctx context.Context, ids []int64) error
 	DecrementStock(ctx context.Context, id int64, quantity int) error
+	IncrementStock(ctx context.Context, id int64, quantity int) error
 
 	// Categories
 	CreateCategory(ctx context.Context, category *domain.Category) (*domain.Category, error)
@@ -33,6 +34,7 @@ type ProductRepo interface {
 	Delete(ctx context.Context, id int64) ([]string, error)
 	BulkDeleteProducts(ctx context.Context, ids []int64) ([]string, error)
 	DecrementStock(ctx context.Context, id int64, quantity int) error
+	IncrementStock(ctx context.Context, id int64, quantity int) error
 
 	// Categories
 	CreateCategory(ctx context.Context, category *domain.Category) (*domain.Category, error)

@@ -27,6 +27,7 @@ type Config struct {
 	RedisURL       string
 	JwtSecretKey   string
 	BaseURL        string
+	FrontendURL    string
 	AllowedOrigins string
 	Supabase       SupabaseConfig
 	SMTP           SMTPConfig
@@ -59,6 +60,7 @@ func loadConfig() {
 		RedisURL:       getEnv("REDIS_URL", ""),
 		AllowedOrigins: getEnv("ALLOWED_ORIGINS", ""),
 		BaseURL:        getEnv("BASE_URL", "http://localhost:8080"),
+		FrontendURL:    getEnv("FRONTEND_URL", "http://localhost:5173"),
 		Supabase: SupabaseConfig{
 			URL:    getEnv("SUPABASE_URL", ""),
 			Key:    getEnv("SUPABASE_SERVICE_KEY", ""),

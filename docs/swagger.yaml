@@ -13,6 +13,17 @@ definitions:
       user_id:
         type: integer
     type: object
+  domain.Category:
+    properties:
+      id:
+        type: integer
+      image_url:
+        type: string
+      name:
+        type: string
+      product_count:
+        type: integer
+    type: object
   domain.Order:
     properties:
       confirmed_at:
@@ -43,6 +54,8 @@ definitions:
         type: string
       trx_id:
         type: string
+      user:
+        $ref: '#/definitions/domain.User'
       user_id:
         type: integer
     type: object
@@ -67,8 +80,16 @@ definitions:
         type: number
       base_price:
         type: number
+      categories:
+        items:
+          $ref: '#/definitions/domain.Category'
+        type: array
       category_id:
         type: integer
+      category_ids:
+        items:
+          type: integer
+        type: array
       created_at:
         type: string
       description:
@@ -79,6 +100,8 @@ definitions:
         type: number
       id:
         type: integer
+      image_url:
+        type: string
       images:
         items:
           $ref: '#/definitions/domain.ProductImage'
@@ -128,9 +151,28 @@ definitions:
       user_id:
         type: integer
     type: object
+  domain.StoreSettings:
+    properties:
+      free_shipping_threshold:
+        type: number
+      id:
+        type: integer
+      standard_delivery_fee:
+        type: number
+      store_address:
+        type: string
+      store_email:
+        type: string
+      store_phone:
+        type: string
+      tax_percentage:
+        type: number
+    type: object
   domain.User:
     properties:
       address:
+        type: string
+      avatar_url:
         type: string
       created_at:
         type: string
@@ -142,6 +184,10 @@ definitions:
         type: integer
       is_active:
         type: boolean
+      permissions:
+        items:
+          type: string
+        type: array
       phone:
         type: string
       role:
@@ -156,11 +202,29 @@ definitions:
       quantity:
         type: integer
     type: object
+  order.checkoutItem:
+    properties:
+      product_id:
+        type: integer
+      quantity:
+        type: integer
+    type: object
   order.checkoutReq:
     properties:
+      items:
+        items:
+          $ref: '#/definitions/order.checkoutItem'
+        type: array
       payment_method:
         type: string
       shipping_address:
+        type: string
+    type: object
+  order.updateStatusReq:
+    properties:
+      estimated_date:
+        type: string
+      status:
         type: string
     type: object
   review.createReviewReq:
@@ -172,6 +236,28 @@ definitions:
       rating:
         type: integer
     type: object
+  user.bulkUpdateRoleReq:
+    properties:
+      ids:
+        items:
+          type: integer
+        type: array
+      otp:
+        type: string
+      password:
+        type: string
+      permissions:
+        items:
+          type: string
+        type: array
+      role:
+        type: string
+    type: object
+  user.forgotPasswordReq:
+    properties:
+      email:
+        type: string
+    type: object
   user.loginReq:
     properties:
       identifier:
@@ -179,15 +265,52 @@ definitions:
       password:
         type: string
     type: object
-  user.signupReq:
+  user.otpRequest:
+    properties:
+      purpose:
+        description: e.g., "password", "email", "phone"
+        type: string
+    type: object
+  user.resetPasswordReq:
+    properties:
+      email:
+        type: string
+      otp:
+        type: string
+      password:
+        type: string
+    type: object
+  user.secureUpdateReq:
+    properties:
+      email:
+        type: string
+      otp:
+        type: string
+      password:
+        type: string
+      phone:
+        type: string
+      purpose:
+        type: string
+    type: object
+  user.socialLoginReq:
+    properties:
+      avatar_url:
+        type: string
+      email:
+        type: string
+      full_name:
+        type: string
+      social_id:
+        type: string
+    type: object
+  user.updateProfileReq:
     properties:
       address:
         type: string
       email:
         type: string
       full_name:
-        type: string
-      password:
         type: string
       phone:
         type: string
@@ -249,6 +372,31 @@ paths:
       summary: List all orders (Admin)
       tags:
       - admin
+  /admin/orders/{id}:
+    delete:
+      description: Remove an order from the system (admin only).
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Delete an order (Admin)
+      tags:
+      - admin
   /admin/orders/{id}/confirm:
     post:
       description: Mark an order as confirmed and paid (admin only).
@@ -272,6 +420,114 @@ paths:
       security:
       - BearerAuth: []
       summary: Confirm an order (Admin)
+      tags:
+      - admin
+  /admin/orders/{id}/status:
+    put:
+      consumes:
+      - application/json
+      description: Update the status and estimated delivery date of an order (admin/moderator
+        only).
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Status Update Details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/order.updateStatusReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Update order status (Admin)
+      tags:
+      - admin
+  /admin/orders/request-delete-otp:
+    post:
+      description: Send an OTP to the admin's email to authorize order deletion.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Request OTP for order deletion (Admin)
+      tags:
+      - admin
+  /admin/reviews:
+    get:
+      description: Retrieve all reviews (admin only).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Review'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all reviews
+      tags:
+      - reviews
+  /admin/reviews/{id}/approve:
+    post:
+      description: Approve a pending review (admin only).
+      parameters:
+      - description: Review ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Approve a review
+      tags:
+      - reviews
+  /admin/upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload an image to the 'categories' folder (admin only).
+      parameters:
+      - description: Image file
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload a general image
       tags:
       - admin
   /cart:
@@ -322,6 +578,115 @@ paths:
       summary: Add a product to cart
       tags:
       - cart
+  /categories:
+    get:
+      description: Retrieve a list of all product categories.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Category'
+            type: array
+      summary: List all categories
+      tags:
+      - categories
+    post:
+      consumes:
+      - application/json
+      description: Add a new category (admin only).
+      parameters:
+      - description: Category Details
+        in: body
+        name: category
+        required: true
+        schema:
+          $ref: '#/definitions/domain.Category'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domain.Category'
+      security:
+      - BearerAuth: []
+      summary: Create a new category
+      tags:
+      - categories
+  /categories/{id}:
+    delete:
+      description: Remove a category by ID (admin only).
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Delete a category
+      tags:
+      - categories
+    put:
+      consumes:
+      - application/json
+      description: Rename an existing product category.
+      parameters:
+      - description: Category ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Updated Category Info
+        in: body
+        name: category
+        required: true
+        schema:
+          $ref: '#/definitions/domain.Category'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.Category'
+      security:
+      - BearerAuth: []
+      summary: Update a category
+      tags:
+      - categories
+  /categories/bulk:
+    delete:
+      consumes:
+      - application/json
+      description: Remove multiple categories by IDs (admin only).
+      parameters:
+      - description: Category IDs to delete
+        in: body
+        name: ids
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Bulk delete categories
+      tags:
+      - categories
   /orders:
     get:
       description: Retrieve a list of all orders placed by the logged-in user.
@@ -385,6 +750,10 @@ paths:
         in: query
         name: limit
         type: integer
+      - description: Search products
+        in: query
+        name: search
+        type: string
       produces:
       - application/json
       responses:
@@ -516,6 +885,30 @@ paths:
       summary: Get a single product
       tags:
       - products
+  /products/bulk:
+    delete:
+      consumes:
+      - application/json
+      description: Remove multiple products and their images by IDs (admin only).
+      parameters:
+      - description: Product IDs to delete
+        in: body
+        name: ids
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Bulk delete products
+      tags:
+      - products
   /reviews:
     post:
       consumes:
@@ -544,6 +937,27 @@ paths:
       summary: Submit a product review
       tags:
       - reviews
+  /reviews/{id}:
+    delete:
+      description: Remove a review (admin only).
+      parameters:
+      - description: Review ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Delete a review
+      tags:
+      - reviews
   /reviews/{productId}:
     get:
       description: Retrieve all reviews for a specific product.
@@ -565,6 +979,80 @@ paths:
       summary: Get reviews for a product
       tags:
       - reviews
+  /settings:
+    get:
+      description: Retrieve global store configuration such as banners and metadata.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.StoreSettings'
+      summary: Get store settings
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Update global store configuration (admin/moderator only).
+      parameters:
+      - description: Updated Settings
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/domain.StoreSettings'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update store settings (Admin)
+      tags:
+      - admin
+  /users:
+    get:
+      description: Retrieve a list of all registered users (admin only).
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.User'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List all users
+      tags:
+      - admin
+  /users/{id}:
+    delete:
+      description: Remove a user account and all associated data (admin only).
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Delete a user account
+      tags:
+      - admin
   /users/{id}/role:
     patch:
       consumes:
@@ -598,6 +1086,78 @@ paths:
       summary: Update user role
       tags:
       - admin
+  /users/avatar:
+    patch:
+      consumes:
+      - multipart/form-data
+      description: Upload a profile photo (max 5MB). Stores to Supabase and saves
+        URL to DB.
+      parameters:
+      - description: Avatar image file
+        in: formData
+        name: avatar
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload or update user avatar
+      tags:
+      - users
+  /users/bulk-role:
+    post:
+      consumes:
+      - application/json
+      description: Update the role of multiple users at once (admin only).
+      parameters:
+      - description: Bulk Update Details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.bulkUpdateRoleReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Bulk update user roles
+      tags:
+      - admin
+  /users/forgot-password:
+    post:
+      consumes:
+      - application/json
+      description: Send a reset code to the user's email if they forgot their password.
+      parameters:
+      - description: User Email
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.forgotPasswordReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Request password reset
+      tags:
+      - users
   /users/login:
     post:
       consumes:
@@ -627,6 +1187,31 @@ paths:
       summary: Login a user
       tags:
       - users
+  /users/otp/request:
+    post:
+      consumes:
+      - application/json
+      description: Send a 6-digit OTP to user's email for a specific purpose (password,
+        email, phone).
+      parameters:
+      - description: OTP Purpose
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.otpRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Request an OTP
+      tags:
+      - users
   /users/profile:
     get:
       description: Retrieve the profile details of the currently logged-in user.
@@ -646,31 +1231,207 @@ paths:
       summary: Get user profile
       tags:
       - users
-  /users/signup:
-    post:
+    patch:
       consumes:
       - application/json
-      description: Create a new user account with full name, email, password, phone,
-        and address.
+      description: Update the logged-in user's name, phone, and address. Email cannot
+        be changed.
       parameters:
-      - description: Signup Details
+      - description: Profile fields to update
         in: body
-        name: signup
+        name: body
         required: true
         schema:
-          $ref: '#/definitions/user.signupReq'
+          $ref: '#/definitions/user.updateProfileReq'
       produces:
       - application/json
       responses:
-        "201":
-          description: Created
+        "200":
+          description: OK
           schema:
             $ref: '#/definitions/domain.User'
         "400":
           description: Bad Request
           schema:
             type: string
+      security:
+      - BearerAuth: []
+      summary: Update user profile
+      tags:
+      - users
+  /users/resend-activation:
+    post:
+      consumes:
+      - application/json
+      description: Resend the account activation code to the user's email.
+      parameters:
+      - description: User ID
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties:
+            format: int64
+            type: integer
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            type: string
+      summary: Resend activation OTP
+      tags:
+      - users
+  /users/reset-password:
+    post:
+      consumes:
+      - application/json
+      description: Reset password using the code sent via ForgotPassword. Returns
+        a new JWT token.
+      parameters:
+      - description: Reset Details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.resetPasswordReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Reset password with OTP
+      tags:
+      - users
+  /users/secure-update:
+    patch:
+      consumes:
+      - application/json
+      description: Update password, email, or phone after OTP verification.
+      parameters:
+      - description: Update details and OTP
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.secureUpdateReq'
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Securely update sensitive info
+      tags:
+      - users
+  /users/signup:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Create a new buyer account. Requires a valid OTP previously sent
+        via /users/signup-otp.
+      parameters:
+      - description: Full Name
+        in: formData
+        name: full_name
+        required: true
+        type: string
+      - description: Email
+        in: formData
+        name: email
+        required: true
+        type: string
+      - description: Password
+        in: formData
+        name: password
+        required: true
+        type: string
+      - description: Phone
+        in: formData
+        name: phone
+        type: string
+      - description: Address
+        in: formData
+        name: address
+        type: string
+      - description: OTP
+        in: formData
+        name: otp
+        required: true
+        type: string
+      - description: Avatar
+        in: formData
+        name: avatar
+        type: file
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            type: string
       summary: Register a new user
+      tags:
+      - users
+  /users/social-login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate or register a user using social provider data (e.g.
+        Google).
+      parameters:
+      - description: Social Login Details
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/user.socialLoginReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Login with social provider
+      tags:
+      - users
+  /users/verify-signup:
+    post:
+      consumes:
+      - application/json
+      description: Verify the OTP sent to email during signup and activate the account.
+      parameters:
+      - description: User ID and OTP
+        in: body
+        name: body
+        required: true
+        schema:
+          additionalProperties: true
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Verify signup OTP
       tags:
       - users
   /ws/chat:

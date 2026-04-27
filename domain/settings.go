@@ -7,6 +7,9 @@ type StoreSettings struct {
 	FreeShippingThreshold float64 `json:"free_shipping_threshold" db:"free_shipping_threshold"`
 	StandardDeliveryFee   float64 `json:"standard_delivery_fee" db:"standard_delivery_fee"`
 	TaxPercentage         float64 `json:"tax_percentage" db:"tax_percentage"`
+	StoreEmail            string  `json:"store_email" db:"store_email"`
+	StorePhone            string  `json:"store_phone" db:"store_phone"`
+	StoreAddress          string  `json:"store_address" db:"store_address"`
 }
 
 type SettingsRepo interface {

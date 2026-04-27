@@ -204,6 +204,17 @@ func (r *productRepo) DecrementStock(ctx context.Context, id int64, quantity int
 	return nil
 }
 
+func (r *productRepo) IncrementStock(ctx context.Context, id int64, quantity int) error {
+	query := `
+		UPDATE products 
+		SET stock_count = stock_count + $1, 
+		    sales_count = sales_count - $1 
+		WHERE id = $2
+	`
+	_, err := r.db.ExecContext(ctx, query, quantity, id)
+	return err
+}
+
 func (r *productRepo) Count(ctx context.Context, search string, categoryIDs []int, minPrice, maxPrice float64) (int64, error) {
 	var args []interface{}
 	nextParam := 1

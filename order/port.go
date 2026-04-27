@@ -8,13 +8,16 @@ import (
 type Service interface {
 	AddToCart(ctx context.Context, userID, productID int64, quantity int) error
 	GetCart(ctx context.Context, userID int64) ([]*domain.CartItem, error)
-	Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string) (*domain.Order, error)
+	Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string, trxID, senderNumber *string, paidAmount *float64) (*domain.Order, error)
 	GetOrders(ctx context.Context, userID int64) ([]*domain.Order, error)
+	GetOrderByID(ctx context.Context, orderID, userID int64) (*domain.Order, error)
 
 	// Admin
 	AdminGetAllOrders(ctx context.Context) ([]*domain.Order, error)
 	AdminConfirmOrder(ctx context.Context, orderID int64) error
-	AdminDeleteOrder(ctx context.Context, id int64) error
+	AdminUpdateOrderStatus(ctx context.Context, orderID int64, status string, estimatedDate string) error
+	AdminRequestDeleteOTP(ctx context.Context, adminID int64) error
+	AdminDeleteOrder(ctx context.Context, id int64, otp string, adminID int64) error
 }
 
 type CartRepo interface {

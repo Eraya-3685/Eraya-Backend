@@ -102,6 +102,9 @@ type checkoutReq struct {
 	Items           []checkoutItem `json:"items"`
 	PaymentMethod   string         `json:"payment_method"`
 	ShippingAddress string         `json:"shipping_address"`
+	TrxID           *string        `json:"trx_id"`
+	SenderNumber    *string        `json:"sender_number"`
+	PaidAmount      *float64       `json:"paid_amount"`
 }
 
 // Checkout godoc
@@ -138,7 +141,7 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	order, err := h.svc.Checkout(r.Context(), userID, items, req.PaymentMethod, req.ShippingAddress)
+	order, err := h.svc.Checkout(r.Context(), userID, items, req.PaymentMethod, req.ShippingAddress, req.TrxID, req.SenderNumber, req.PaidAmount)
 	if err != nil {
 		slog.Error("Checkout failed", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -179,6 +182,39 @@ func (h *Handler) GetMyOrders(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(orders)
+}
+
+// GetOrder godoc
+// @Summary Get order details
+// @Description Retrieve details for a specific order (buyers only).
+// @Tags orders
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Order ID"
+// @Success 200 {object} domain.Order
+// @Failure 403 {string} string "Forbidden"
+// @Failure 404 {string} string "Not Found"
+// @Router /orders/{id} [get]
+func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
+	role := r.Context().Value("role").(string)
+	if role == "admin" || role == "moderator" {
+		http.Error(w, "staff do not use this endpoint", http.StatusForbidden)
+		return
+	}
+
+	idStr := chi.URLParam(r, "id")
+	orderID, _ := strconv.ParseInt(idStr, 10, 64)
+	userID := r.Context().Value("user_id").(int64)
+
+	order, err := h.svc.GetOrderByID(r.Context(), orderID, userID)
+	if err != nil {
+		slog.Error("Failed to get order", "id", orderID, "error", err)
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(order)
 }
 
 // AdminGetOrders godoc
@@ -241,8 +277,17 @@ func (h *Handler) AdminConfirmOrder(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) AdminDeleteOrder(w http.ResponseWriter, r *http.Request) {
 	idStr := chi.URLParam(r, "id")
 	orderID, _ := strconv.ParseInt(idStr, 10, 64)
+	adminID := r.Context().Value("user_id").(int64)
 
-	err := h.svc.AdminDeleteOrder(r.Context(), orderID)
+	var req struct {
+		OTP string `json:"otp"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "OTP is required", http.StatusBadRequest)
+		return
+	}
+
+	err := h.svc.AdminDeleteOrder(r.Context(), orderID, req.OTP, adminID)
 	if err != nil {
 		slog.Error("Admin failed to delete order", "id", orderID, "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -251,4 +296,62 @@ func (h *Handler) AdminDeleteOrder(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Order deleted successfully"))
+}
+
+// AdminRequestDeleteOTP godoc
+// @Summary Request OTP for order deletion (Admin)
+// @Description Send an OTP to the admin's email to authorize order deletion.
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {string} string "OK"
+// @Router /admin/orders/request-delete-otp [post]
+func (h *Handler) AdminRequestDeleteOTP(w http.ResponseWriter, r *http.Request) {
+	adminID := r.Context().Value("user_id").(int64)
+
+	err := h.svc.AdminRequestDeleteOTP(r.Context(), adminID)
+	if err != nil {
+		slog.Error("Admin failed to request delete OTP", "admin_id", adminID, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("OTP sent to your email"))
+}
+
+type updateStatusReq struct {
+	Status        string `json:"status"`
+	EstimatedDate string `json:"estimated_date"`
+}
+
+// AdminUpdateStatus godoc
+// @Summary Update order status (Admin)
+// @Description Update the status and estimated delivery date of an order (admin/moderator only).
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "Order ID"
+// @Param body body updateStatusReq true "Status Update Details"
+// @Success 200 {string} string "OK"
+// @Router /admin/orders/{id}/status [put]
+func (h *Handler) AdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	orderID, _ := strconv.ParseInt(idStr, 10, 64)
+
+	var req updateStatusReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	err := h.svc.AdminUpdateOrderStatus(r.Context(), orderID, req.Status, req.EstimatedDate)
+	if err != nil {
+		slog.Error("Admin failed to update order status", "id", orderID, "status", req.Status, "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

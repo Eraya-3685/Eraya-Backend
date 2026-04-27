@@ -14,14 +14,17 @@ type Order struct {
 	OrderStatus     string     `json:"order_status" db:"order_status"`
 	ShippingAddress string     `json:"shipping_address" db:"shipping_address"`
 	TrxID           *string    `json:"trx_id" db:"trx_id"`
+	SenderNumber    *string    `json:"sender_number" db:"sender_number"`
+	PaidAmount      *float64   `json:"paid_amount" db:"paid_amount"`
 	CreatedAt       time.Time  `json:"created_at" db:"created_at"`
 	TrackingNumber  *string    `json:"tracking_number" db:"tracking_number"`
 	ConfirmedAt     *time.Time `json:"confirmed_at" db:"confirmed_at"`
+	ProcessingAt    *time.Time `json:"processing_at" db:"processing_at"`
 	ShippedAt       *time.Time `json:"shipped_at" db:"shipped_at"`
 	DeliveredAt     *time.Time `json:"delivered_at" db:"delivered_at"`
 
 	Items []OrderItem `json:"items,omitempty" db:"-"`
-	User  User        `json:"user,omitempty" db:"user"`
+	User  User        `json:"user" db:"user"`
 }
 
 type OrderItem struct {
@@ -46,5 +49,6 @@ type OrderRepo interface {
 	ListAll(ctx context.Context) ([]*Order, error)
 	FindByID(ctx context.Context, id int64) (*Order, error)
 	UpdateStatus(ctx context.Context, id int64, status, paymentStatus string) error
+	UpdateStatusWithStock(ctx context.Context, id int64, status, paymentStatus string) error
 	Delete(ctx context.Context, id int64) error
 }

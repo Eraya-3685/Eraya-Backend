@@ -30,6 +30,13 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 	})
 }
 
+// GetSettings godoc
+// @Summary Get store settings
+// @Description Retrieve global store configuration such as banners and metadata.
+// @Tags admin
+// @Produce json
+// @Success 200 {object} domain.StoreSettings
+// @Router /settings [get]
 func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	s, err := h.svc.GetSettings(r.Context())
 	if err != nil {
@@ -41,6 +48,16 @@ func (h *Handler) GetSettings(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(s)
 }
 
+// UpdateSettings godoc
+// @Summary Update store settings (Admin)
+// @Description Update global store configuration (admin/moderator only).
+// @Tags admin
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body domain.StoreSettings true "Updated Settings"
+// @Success 200 {object} map[string]string
+// @Router /settings [put]
 func (h *Handler) UpdateSettings(w http.ResponseWriter, r *http.Request) {
 	var s domain.StoreSettings
 	if err := json.NewDecoder(r.Body).Decode(&s); err != nil {

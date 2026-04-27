@@ -24,6 +24,7 @@ type Product struct {
 	SalesCount         int       `json:"sales_count" db:"sales_count"`
 	AverageRating      float64   `json:"average_rating" db:"average_rating"`
 	TotalReviews       int       `json:"total_reviews" db:"total_reviews"`
+	ImageUrl           string    `json:"image_url,omitempty" db:"image_url"`
 
 	CategoryIDs        []int          `json:"category_ids,omitempty" db:"-"`
 	Categories         []Category      `json:"categories,omitempty" db:"-"`
