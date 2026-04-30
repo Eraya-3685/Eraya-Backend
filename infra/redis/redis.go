@@ -29,11 +29,6 @@ func ConnectRedis(redisURL string) (*redis.Client, error) {
 
 	ctx := context.Background()
 	_, err = redisDB.Ping(ctx).Result()
-	if err != nil {
-		log.Printf("Failed to connect to Redis: %v", err)
-		return nil, err
-	}
-
-	log.Println("Successfully connected to Redis")
+	// Silent connection
 	return redisDB, nil
 }

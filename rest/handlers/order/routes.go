@@ -17,10 +17,12 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 	r.Route("/orders", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(jwtSecret, userSvc))
 		r.Post("/checkout", h.Checkout)
+		r.Post("/bkash/init", h.InitBKashPayment)
 		r.Get("/", h.GetMyOrders)
 		r.Get("/{id}", h.GetOrder)
 	})
 
+	r.Get("/orders/bkash/callback", h.BKashCallback)
 	r.Route("/admin/orders", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(jwtSecret, userSvc), middleware.PermissionMiddleware("orders"))
 		r.Get("/", h.AdminGetOrders)

@@ -3,23 +3,29 @@ package order
 import (
 	"context"
 	"encoding/json"
+	"eraya/config"
 	"eraya/domain"
+	"eraya/infra/bkash"
 	"eraya/order"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
 
 type Handler struct {
-	svc order.Service
+	svc         order.Service
+	bkashClient *bkash.Client
 }
 
-func NewHandler(svc order.Service) *Handler {
+func NewHandler(svc order.Service, bkashClient *bkash.Client) *Handler {
 	return &Handler{
-		svc: svc,
+		svc:         svc,
+		bkashClient: bkashClient,
 	}
 }
 
@@ -148,9 +154,85 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.PaymentMethod == "bKash" && req.TrxID != nil && *req.TrxID != "" {
+		err = h.svc.ConfirmPayment(r.Context(), order.ID, *req.TrxID, *req.PaidAmount)
+		if err == nil {
+			order.OrderStatus = "Pending" // Keep it pending for admin review
+			order.PaymentStatus = "Paid"
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(order)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"order": order,
+	})
+}
+
+type bkashInitReq struct {
+	Amount float64 `json:"amount"`
+}
+
+// InitBKashPayment godoc
+// @Summary Initialize bKash payment
+// @Description Start a bKash payment process. Returns a redirect URL to bKash gateway.
+// @Tags orders
+// @Accept json
+// @Produce json
+// @Security BearerAuth
+// @Param body body bkashInitReq true "Payment Amount"
+// @Success 200 {object} map[string]string
+// @Router /orders/bkash/init [post]
+func (h *Handler) InitBKashPayment(w http.ResponseWriter, r *http.Request) {
+	var req bkashInitReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid input", http.StatusBadRequest)
+		return
+	}
+
+	invoiceNumber := fmt.Sprintf("TEMP-%d", time.Now().UnixNano())
+	callbackURL := config.GetConfig().BaseURL + "/orders/bkash/callback"
+
+	bkashRes, err := h.bkashClient.CreatePayment(req.Amount, invoiceNumber, callbackURL)
+	var bkashURL string
+	if err != nil {
+		slog.Error("Failed to create bKash payment, falling back to mock UI", "error", err)
+		bkashURL = fmt.Sprintf("%s/bkash-sandbox?amount=%.2f&invoice=%s&callback=%s", config.GetConfig().FrontendURL, req.Amount, invoiceNumber, callbackURL)
+	} else {
+		bkashURL = bkashRes.BkashURL
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"bkashURL": bkashURL})
+}
+
+// BKashCallback godoc
+// @Summary bKash payment callback
+// @Description Internal callback URL for bKash to report payment status.
+// @Tags orders
+// @Param paymentID query string true "bKash Payment ID"
+// @Param status query string true "Payment Status"
+// @Success 302 {string} string "Redirect"
+// @Router /orders/bkash/callback [get]
+func (h *Handler) BKashCallback(w http.ResponseWriter, r *http.Request) {
+	paymentID := r.URL.Query().Get("paymentID")
+	status := r.URL.Query().Get("status")
+
+	if status != "success" || paymentID == "" {
+		http.Redirect(w, r, config.GetConfig().FrontendURL+"/checkout?bkash_error=true", http.StatusTemporaryRedirect)
+		return
+	}
+
+	res, err := h.bkashClient.ExecutePayment(paymentID)
+	if err != nil {
+		slog.Error("Failed to execute bKash payment", "error", err)
+		http.Redirect(w, r, config.GetConfig().FrontendURL+"/checkout?bkash_error=true", http.StatusTemporaryRedirect)
+		return
+	}
+
+	senderNumber := r.URL.Query().Get("senderNumber")
+	redirectURL := fmt.Sprintf("%s/checkout?bkash_success=true&trxID=%s&amount=%s&senderNumber=%s", config.GetConfig().FrontendURL, res.TrxID, res.Amount, senderNumber)
+	http.Redirect(w, r, redirectURL, http.StatusTemporaryRedirect)
 }
 
 // GetMyOrders godoc

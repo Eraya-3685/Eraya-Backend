@@ -21,6 +21,14 @@ type SMTPConfig struct {
 	Password string
 }
 
+type BKashConfig struct {
+	Username string
+	Password string
+	AppKey   string
+	AppSecret string
+	BaseURL  string
+}
+
 type Config struct {
 	HttpPort       int
 	DatabaseURL    string
@@ -31,6 +39,7 @@ type Config struct {
 	AllowedOrigins string
 	Supabase       SupabaseConfig
 	SMTP           SMTPConfig
+	BKash          BKashConfig
 }
 
 var configurations *Config
@@ -71,6 +80,13 @@ func loadConfig() {
 			Port:     smtpPort,
 			User:     getEnv("SMTP_USER", ""),
 			Password: getEnv("SMTP_PASS", ""),
+		},
+		BKash: BKashConfig{
+			Username:  getEnv("BKASH_USERNAME", ""),
+			Password:  getEnv("BKASH_PASSWORD", ""),
+			AppKey:    getEnv("BKASH_APP_KEY", ""),
+			AppSecret: getEnv("BKASH_APP_SECRET", ""),
+			BaseURL:   getEnv("BKASH_BASE_URL", "https://tokenized.sandbox.bka.sh/v1.2.0-beta"),
 		},
 	}
 }

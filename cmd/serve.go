@@ -3,6 +3,7 @@ package cmd
 import (
 	chat_pkg "eraya/chat"
 	"eraya/config"
+	"eraya/infra/bkash"
 	"eraya/infra/db"
 	"eraya/infra/mail"
 	"eraya/infra/redis"
@@ -22,13 +23,12 @@ import (
 	"eraya/settings"
 	"eraya/user"
 	"eraya/wishlist"
-	"log"
 	"log/slog"
 
+	"context"
 	"net/http"
 	"os"
 	"time"
-	"context"
 )
 
 func keepAlive(url string) {
@@ -36,10 +36,7 @@ func keepAlive(url string) {
 	for range ticker.C {
 		resp, err := http.Get(url)
 		if err == nil {
-			log.Printf("Keep-alive ping sent to %s | Status: %s", url, resp.Status)
 			resp.Body.Close()
-		} else {
-			log.Printf("Keep-alive ping failed: %v", err)
 		}
 	}
 }
@@ -47,12 +44,7 @@ func startCleanupWorker(svc user.Service) {
 	ticker := time.NewTicker(6 * time.Hour) // Run every 6 hours
 	for range ticker.C {
 		ctx, cancel := context.WithTimeout(context.Background(), 1*time.Minute)
-		err := svc.CleanupUnverifiedUsers(ctx)
-		if err != nil {
-			slog.Error("Cleanup worker failed", "error", err)
-		} else {
-			slog.Info("Cleanup worker completed successfully")
-		}
+		_ = svc.CleanupUnverifiedUsers(ctx)
 		cancel()
 	}
 }
@@ -96,8 +88,9 @@ func Serve() {
 	settingsService := settings.NewService(settingsRepo)
 	settingsHandler := settings_handler.NewHandler(settingsService)
 
+	bkashClient := bkash.NewClient(cnf.BKash)
 	orderService := order.NewService(cartRepo, orderRepo, productService, settingsService, mailer, userService)
-	orderHandler := order_handler.NewHandler(orderService)
+	orderHandler := order_handler.NewHandler(orderService, bkashClient)
 
 	orderVerifier := repo.NewOrderVerifier(dbCon)
 	reviewRepo := repo.NewReviewRepo(dbCon)
@@ -107,7 +100,7 @@ func Serve() {
 	chatRepo := repo.NewChatRepo(dbCon)
 	chatPubSub := repo.NewChatPubSub(redisDB)
 	chatService := chat_pkg.NewService(chatRepo, chatPubSub)
-	chatHandler := chat_handler.NewWebSocketHandler(chatService)
+	chatHandler := chat_handler.NewHandler(chatService)
 
 	wishlistRepo := repo.NewWishlistRepo(dbCon)
 	wishlistService := wishlist.NewService(wishlistRepo)

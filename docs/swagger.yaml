@@ -24,6 +24,65 @@ definitions:
       product_count:
         type: integer
     type: object
+  domain.Conversation:
+    properties:
+      admin_id:
+        type: integer
+      admin_name:
+        type: string
+      buyer_avatar:
+        type: string
+      buyer_id:
+        type: integer
+      buyer_name:
+        type: string
+      id:
+        type: integer
+      last_message:
+        type: string
+      messages:
+        items:
+          $ref: '#/definitions/domain.Message'
+        type: array
+      updated_at:
+        type: string
+    type: object
+  domain.Message:
+    properties:
+      attachment_url:
+        type: string
+      conversation_id:
+        type: integer
+      created_at:
+        type: string
+      id:
+        type: integer
+      is_read:
+        type: boolean
+      message_text:
+        type: string
+      online:
+        type: boolean
+      order_id:
+        type: integer
+      receiver_id:
+        type: integer
+      reply_to_id:
+        type: integer
+      reply_to_text:
+        type: string
+      sender_avatar:
+        type: string
+      sender_id:
+        type: integer
+      sender_name:
+        type: string
+      temp_id:
+        type: string
+      type:
+        description: '"message", "presence", "update", "delete"'
+        type: string
+    type: object
   domain.Order:
     properties:
       confirmed_at:
@@ -40,9 +99,15 @@ definitions:
         type: array
       order_status:
         type: string
+      paid_amount:
+        type: number
       payment_method:
         type: string
       payment_status:
+        type: string
+      processing_at:
+        type: string
+      sender_number:
         type: string
       shipped_at:
         type: string
@@ -202,6 +267,11 @@ definitions:
       quantity:
         type: integer
     type: object
+  order.bkashInitReq:
+    properties:
+      amount:
+        type: number
+    type: object
   order.checkoutItem:
     properties:
       product_id:
@@ -215,9 +285,15 @@ definitions:
         items:
           $ref: '#/definitions/order.checkoutItem'
         type: array
+      paid_amount:
+        type: number
       payment_method:
         type: string
+      sender_number:
+        type: string
       shipping_address:
+        type: string
+      trx_id:
         type: string
     type: object
   order.updateStatusReq:
@@ -687,6 +763,73 @@ paths:
       summary: Bulk delete categories
       tags:
       - categories
+  /chat/conversation/{id}:
+    delete:
+      description: Permantently delete a conversation and all its messages. Admin
+        only.
+      parameters:
+      - description: Conversation ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      summary: Delete a conversation
+      tags:
+      - chat
+  /chat/conversation/{withID}:
+    get:
+      description: Fetch all messages between the current user and another user.
+      parameters:
+      - description: Other User ID
+        in: path
+        name: withID
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Message'
+            type: array
+      summary: Get messages in a conversation
+      tags:
+      - chat
+  /chat/conversations:
+    get:
+      description: Fetch all active conversations for the current user.
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Conversation'
+            type: array
+      summary: List all conversations
+      tags:
+      - chat
+  /chat/ws:
+    get:
+      description: Establish a WebSocket connection for real-time messaging. Requires
+        token in query param.
+      parameters:
+      - description: Chat with User ID
+        in: query
+        name: with
+        required: true
+        type: integer
+      - description: JWT Token
+        in: query
+        name: token
+        required: true
+        type: string
+      responses: {}
+      summary: Connect to real-time chat
+      tags:
+      - chat
   /orders:
     get:
       description: Retrieve a list of all orders placed by the logged-in user.
@@ -706,6 +849,84 @@ paths:
       security:
       - BearerAuth: []
       summary: Get order history
+      tags:
+      - orders
+  /orders/{id}:
+    get:
+      description: Retrieve details for a specific order (buyers only).
+      parameters:
+      - description: Order ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.Order'
+        "403":
+          description: Forbidden
+          schema:
+            type: string
+        "404":
+          description: Not Found
+          schema:
+            type: string
+      security:
+      - BearerAuth: []
+      summary: Get order details
+      tags:
+      - orders
+  /orders/bkash/callback:
+    get:
+      description: Internal callback URL for bKash to report payment status.
+      parameters:
+      - description: bKash Payment ID
+        in: query
+        name: paymentID
+        required: true
+        type: string
+      - description: Payment Status
+        in: query
+        name: status
+        required: true
+        type: string
+      responses:
+        "302":
+          description: Redirect
+          schema:
+            type: string
+      summary: bKash payment callback
+      tags:
+      - orders
+  /orders/bkash/init:
+    post:
+      consumes:
+      - application/json
+      description: Start a bKash payment process. Returns a redirect URL to bKash
+        gateway.
+      parameters:
+      - description: Payment Amount
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/order.bkashInitReq'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Initialize bKash payment
       tags:
       - orders
   /orders/checkout:
@@ -1434,25 +1655,78 @@ paths:
       summary: Verify signup OTP
       tags:
       - users
-  /ws/chat:
+  /wishlist:
     get:
-      description: Establish a WebSocket connection for real-time messaging. Requires
-        token in query param.
+      description: Fetch all products in the authenticated user's wishlist.
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.Product'
+            type: array
+      security:
+      - BearerAuth: []
+      summary: List wishlist items
+      tags:
+      - wishlist
+  /wishlist/add/{product_id}:
+    post:
+      description: Add a specific product to the authenticated user's wishlist.
       parameters:
-      - description: Chat with User ID
-        in: query
-        name: with
+      - description: Product ID
+        in: path
+        name: product_id
         required: true
         type: integer
-      - description: JWT Token
-        in: query
-        name: token
-        required: true
-        type: string
-      responses: {}
-      summary: Connect to real-time chat
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Add product to wishlist
       tags:
-      - chat
+      - wishlist
+  /wishlist/clear:
+    delete:
+      description: Remove all items from the authenticated user's wishlist.
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Clear wishlist
+      tags:
+      - wishlist
+  /wishlist/remove/{product_id}:
+    delete:
+      description: Remove a specific product from the authenticated user's wishlist.
+      parameters:
+      - description: Product ID
+        in: path
+        name: product_id
+        required: true
+        type: integer
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Remove product from wishlist
+      tags:
+      - wishlist
 schemes:
 - https
 - http

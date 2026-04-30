@@ -11,6 +11,7 @@ type Service interface {
 	Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string, trxID, senderNumber *string, paidAmount *float64) (*domain.Order, error)
 	GetOrders(ctx context.Context, userID int64) ([]*domain.Order, error)
 	GetOrderByID(ctx context.Context, orderID, userID int64) (*domain.Order, error)
+	ConfirmPayment(ctx context.Context, orderID int64, trxID string, amount float64) error
 
 	// Admin
 	AdminGetAllOrders(ctx context.Context) ([]*domain.Order, error)

@@ -1,7 +1,6 @@
 package db
 
 import (
-	"log"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -11,7 +10,6 @@ import (
 func NewConnection(databaseURL string) (*sqlx.DB, error) {
 	db, err := sqlx.Connect("postgres", databaseURL)
 	if err != nil {
-		log.Printf("Failed to connect to database: %v", err)
 		return nil, err
 	}
 

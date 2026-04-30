@@ -137,7 +137,15 @@ func (s *service) Checkout(ctx context.Context, userID int64, items []domain.Car
 	// Clear cart after successful order
 	s.cartRepo.Clear(ctx, userID)
 
-	// Orders stay pending regardless of payment method until admin confirms
+	// Async email notification with timeout
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		fullOrder, err := s.orderRepo.FindByID(ctx, createdOrder.ID)
+		if err == nil && fullOrder != nil && fullOrder.User.Email != "" {
+			s.mailer.SendOrderStatusUpdate(fullOrder, fullOrder.OrderStatus, "")
+		}
+	}()
 
 	return createdOrder, nil
 }
@@ -156,38 +164,37 @@ func (s *service) GetOrderByID(ctx context.Context, orderID, userID int64) (*dom
 	}
 	return order, nil
 }
-
 func (s *service) AdminGetAllOrders(ctx context.Context) ([]*domain.Order, error) {
 	return s.orderRepo.ListAll(ctx)
 }
 
 func (s *service) AdminConfirmOrder(ctx context.Context, orderID int64) error {
-	err := s.orderRepo.UpdateStatus(ctx, orderID, "Confirmed", "paid")
+	err := s.orderRepo.UpdateStatus(ctx, orderID, "Confirmed", "Paid")
 	if err == nil {
-		// Async notifications
 		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
 			time.Sleep(1 * time.Second)
-			slog.Info("Email and SMS sent to user", "order_id", orderID)
+			slog.Info("Order confirmed", "order_id", orderID)
+			_ = ctx
 		}()
 	}
 	return err
 }
 
 func (s *service) AdminUpdateOrderStatus(ctx context.Context, orderID int64, status string, estimatedDate string) error {
-	// 1. Get current order to check previous status and items
 	order, err := s.orderRepo.FindByID(ctx, orderID)
 	if err != nil {
 		return err
 	}
 
-	// 2. Validate forward-only status flow
 	statusOrder := map[string]int{
 		"Pending":    1,
 		"Confirmed":  2,
 		"Processing": 3,
 		"Shipped":    4,
 		"Delivered":  5,
-		"Cancelled":  6, // terminal
+		"Cancelled":  6,
 	}
 
 	currentRank := statusOrder[order.OrderStatus]
@@ -204,20 +211,38 @@ func (s *service) AdminUpdateOrderStatus(ctx context.Context, orderID int64, sta
 		paymentStatus = "Paid"
 	}
 
-	// 3. Call repository to update status and handle stock in a transaction
 	err = s.orderRepo.UpdateStatusWithStock(ctx, orderID, status, paymentStatus)
 	if err != nil {
 		return err
 	}
 
-	// 4. Send Email Notification
 	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 		if order.User.Email != "" {
 			s.mailer.SendOrderStatusUpdate(order, status, estimatedDate)
 		}
+		_ = ctx
 	}()
 
 	return nil
+}
+
+func (s *service) ConfirmPayment(ctx context.Context, orderID int64, trxID string, amount float64) error {
+	err := s.orderRepo.UpdateStatus(ctx, orderID, "Pending", "Paid")
+	if err == nil {
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			time.Sleep(1 * time.Second)
+			fullOrder, err := s.orderRepo.FindByID(ctx, orderID)
+			if err == nil && fullOrder != nil && fullOrder.User.Email != "" {
+				s.mailer.SendOrderStatusUpdate(fullOrder, "Pending", "")
+			}
+			slog.Info("Payment confirmed, order remains Pending for admin review", "order_id", orderID, "trx_id", trxID)
+		}()
+	}
+	return err
 }
 
 func (s *service) AdminRequestDeleteOTP(ctx context.Context, adminID int64) error {

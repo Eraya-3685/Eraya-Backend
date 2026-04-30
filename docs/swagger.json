@@ -560,6 +560,104 @@
                 }
             }
         },
+        "/chat/conversation/{id}": {
+            "delete": {
+                "description": "Permantently delete a conversation and all its messages. Admin only.",
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Delete a conversation",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Conversation ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/chat/conversation/{withID}": {
+            "get": {
+                "description": "Fetch all messages between the current user and another user.",
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Get messages in a conversation",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Other User ID",
+                        "name": "withID",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Message"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/chat/conversations": {
+            "get": {
+                "description": "Fetch all active conversations for the current user.",
+                "tags": [
+                    "chat"
+                ],
+                "summary": "List all conversations",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Conversation"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/chat/ws": {
+            "get": {
+                "description": "Establish a WebSocket connection for real-time messaging. Requires token in query param.",
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Connect to real-time chat",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Chat with User ID",
+                        "name": "with",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "JWT Token",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {}
+            }
+        },
         "/orders": {
             "get": {
                 "security": [
@@ -589,6 +687,81 @@
                         "description": "Forbidden",
                         "schema": {
                             "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/orders/bkash/callback": {
+            "get": {
+                "description": "Internal callback URL for bKash to report payment status.",
+                "tags": [
+                    "orders"
+                ],
+                "summary": "bKash payment callback",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "bKash Payment ID",
+                        "name": "paymentID",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Payment Status",
+                        "name": "status",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "Redirect",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/orders/bkash/init": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Start a bKash payment process. Returns a redirect URL to bKash gateway.",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orders"
+                ],
+                "summary": "Initialize bKash payment",
+                "parameters": [
+                    {
+                        "description": "Payment Amount",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/order.bkashInitReq"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -632,6 +805,52 @@
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "/orders/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve details for a specific order (buyers only).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "orders"
+                ],
+                "summary": "Get order details",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Order ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.Order"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "type": "string"
                         }
@@ -1719,30 +1938,122 @@
                 }
             }
         },
-        "/ws/chat": {
+        "/wishlist": {
             "get": {
-                "description": "Establish a WebSocket connection for real-time messaging. Requires token in query param.",
-                "tags": [
-                    "chat"
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
                 ],
-                "summary": "Connect to real-time chat",
+                "description": "Fetch all products in the authenticated user's wishlist.",
+                "tags": [
+                    "wishlist"
+                ],
+                "summary": "List wishlist items",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.Product"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wishlist/add/{product_id}": {
+            "post": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Add a specific product to the authenticated user's wishlist.",
+                "tags": [
+                    "wishlist"
+                ],
+                "summary": "Add product to wishlist",
                 "parameters": [
                     {
                         "type": "integer",
-                        "description": "Chat with User ID",
-                        "name": "with",
-                        "in": "query",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "JWT Token",
-                        "name": "token",
-                        "in": "query",
+                        "description": "Product ID",
+                        "name": "product_id",
+                        "in": "path",
                         "required": true
                     }
                 ],
-                "responses": {}
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wishlist/clear": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove all items from the authenticated user's wishlist.",
+                "tags": [
+                    "wishlist"
+                ],
+                "summary": "Clear wishlist",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/wishlist/remove/{product_id}": {
+            "delete": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Remove a specific product from the authenticated user's wishlist.",
+                "tags": [
+                    "wishlist"
+                ],
+                "summary": "Remove product from wishlist",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Product ID",
+                        "name": "product_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
             }
         }
     },
@@ -1784,6 +2095,95 @@
                 }
             }
         },
+        "domain.Conversation": {
+            "type": "object",
+            "properties": {
+                "admin_id": {
+                    "type": "integer"
+                },
+                "admin_name": {
+                    "type": "string"
+                },
+                "buyer_avatar": {
+                    "type": "string"
+                },
+                "buyer_id": {
+                    "type": "integer"
+                },
+                "buyer_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "last_message": {
+                    "type": "string"
+                },
+                "messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.Message"
+                    }
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "domain.Message": {
+            "type": "object",
+            "properties": {
+                "attachment_url": {
+                    "type": "string"
+                },
+                "conversation_id": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_read": {
+                    "type": "boolean"
+                },
+                "message_text": {
+                    "type": "string"
+                },
+                "online": {
+                    "type": "boolean"
+                },
+                "order_id": {
+                    "type": "integer"
+                },
+                "receiver_id": {
+                    "type": "integer"
+                },
+                "reply_to_id": {
+                    "type": "integer"
+                },
+                "reply_to_text": {
+                    "type": "string"
+                },
+                "sender_avatar": {
+                    "type": "string"
+                },
+                "sender_id": {
+                    "type": "integer"
+                },
+                "sender_name": {
+                    "type": "string"
+                },
+                "temp_id": {
+                    "type": "string"
+                },
+                "type": {
+                    "description": "\"message\", \"presence\", \"update\", \"delete\"",
+                    "type": "string"
+                }
+            }
+        },
         "domain.Order": {
             "type": "object",
             "properties": {
@@ -1808,10 +2208,19 @@
                 "order_status": {
                     "type": "string"
                 },
+                "paid_amount": {
+                    "type": "number"
+                },
                 "payment_method": {
                     "type": "string"
                 },
                 "payment_status": {
+                    "type": "string"
+                },
+                "processing_at": {
+                    "type": "string"
+                },
+                "sender_number": {
                     "type": "string"
                 },
                 "shipped_at": {
@@ -2055,6 +2464,14 @@
                 }
             }
         },
+        "order.bkashInitReq": {
+            "type": "object",
+            "properties": {
+                "amount": {
+                    "type": "number"
+                }
+            }
+        },
         "order.checkoutItem": {
             "type": "object",
             "properties": {
@@ -2075,10 +2492,19 @@
                         "$ref": "#/definitions/order.checkoutItem"
                     }
                 },
+                "paid_amount": {
+                    "type": "number"
+                },
                 "payment_method": {
                     "type": "string"
                 },
+                "sender_number": {
+                    "type": "string"
+                },
                 "shipping_address": {
+                    "type": "string"
+                },
+                "trx_id": {
                     "type": "string"
                 }
             }

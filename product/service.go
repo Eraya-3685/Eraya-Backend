@@ -5,6 +5,7 @@ import (
 	"eraya/domain"
 	"eraya/infra/storage"
 	"log/slog"
+	"time"
 )
 
 type service struct {
@@ -24,8 +25,12 @@ func NewService(repo ProductRepo, cache ProductCache, storage *storage.StorageSe
 func (s *service) CreateProduct(ctx context.Context, product *domain.Product) (*domain.Product, error) {
 	p, err := s.repo.Create(ctx, product)
 	if err == nil {
-		// Invalidate cache asynchronously
-		go s.invalidateCache(context.Background())
+		// Invalidate cache asynchronously with timeout
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			s.invalidateCache(ctx)
+		}()
 	}
 	return p, err
 }
@@ -55,13 +60,16 @@ func (s *service) GetProductByID(ctx context.Context, id int64) (*domain.Product
 func (s *service) UpdateProduct(ctx context.Context, p *domain.Product) ([]string, error) {
 	orphanedURLs, err := s.repo.Update(ctx, p)
 	if err == nil {
-		go s.invalidateCache(context.Background())
-		// Cleanup orphaned images from storage
-		for _, url := range orphanedURLs {
-			if url != "" {
-				go s.storage.DeleteFile(url)
+		go func() {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			s.invalidateCache(ctx)
+			for _, url := range orphanedURLs {
+				if url != "" {
+					s.storage.DeleteFile(url)
+				}
 			}
-		}
+		}()
 	}
 	return orphanedURLs, err
 }

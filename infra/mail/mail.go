@@ -178,11 +178,9 @@ func (m *smtpMailer) SendOrderStatusUpdate(order *domain.Order, status string, e
 type mockMailer struct{}
 
 func (m *mockMailer) SendOTP(to string, otp string) error {
-	fmt.Printf("\n--- MOCK OTP EMAIL SENT ---\nTo: %s\nOTP: %s\n---------------------------\n\n", to, otp)
 	return nil
 }
 
 func (m *mockMailer) SendOrderStatusUpdate(order *domain.Order, status string, estimatedDate string) error {
-	fmt.Printf("\n--- MOCK STATUS EMAIL SENT ---\nTo: %s\nOrder: #%d\nStatus: %s\nEst. Date: %s\n-----------------------------\n\n", order.User.Email, order.ID, status, estimatedDate)
 	return nil
 }
