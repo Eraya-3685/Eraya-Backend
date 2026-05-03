@@ -27,7 +27,10 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string) {
 		r.With(
 			middleware.AuthMiddleware(jwtSecret, h.svc),
 			middleware.PermissionMiddleware("users"),
-		).Get("/", h.ListUsers)
+		).Group(func(r chi.Router) {
+			r.Get("/", h.ListUsers)
+			r.Get("/{id}", h.GetUserByID)
+		})
 
 		// Admin only
 		r.With(

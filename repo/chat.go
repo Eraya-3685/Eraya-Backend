@@ -184,7 +184,8 @@ func (r *chatRepo) ListConversations(ctx context.Context, userID int64) ([]*doma
 
 	condition := "c.buyer_id = $1"
 	if user.Role == "admin" || user.Role == "moderator" {
-		condition = "c.admin_id = $1 OR c.admin_id IS NULL"
+		// Admins and Moderators should see ALL conversations to monitor support
+		condition = "1=1" 
 	}
 
 	query := fmt.Sprintf(`
@@ -210,6 +211,25 @@ func (r *chatRepo) GetUserRole(ctx context.Context, userID int64) (string, error
 	var role string
 	err := r.db.GetContext(ctx, &role, "SELECT role FROM users WHERE id = $1", userID)
 	return role, err
+}
+
+func (r *chatRepo) HasPermission(ctx context.Context, userID int64, permission string) (bool, error) {
+	user, err := r.fetchUserMinimal(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	if user.Role == "admin" {
+		return true, nil
+	}
+
+	for _, p := range user.Permissions {
+		if p == permission {
+			return true, nil
+		}
+	}
+
+	return false, nil
 }
 
 func (r *chatRepo) GetMessageByID(ctx context.Context, msgID int64) (*domain.Message, error) {
@@ -292,16 +312,30 @@ func (r *chatRepo) SearchUsers(ctx context.Context, query string) ([]*domain.Use
 }
 
 type userMinimal struct {
-	ID        int64   `db:"id"`
-	FullName  string  `db:"full_name"`
-	Role      string  `db:"role"`
-	AvatarURL *string `db:"avatar_url"`
+	ID          int64    `db:"id"`
+	FullName    string   `db:"full_name"`
+	Role        string   `db:"role"`
+	AvatarURL   *string  `db:"avatar_url"`
+	Permissions []string `db:"-"`
 }
 
 func (r *chatRepo) fetchUserMinimal(ctx context.Context, id int64) (userMinimal, error) {
 	var u userMinimal
 	err := r.db.GetContext(ctx, &u, "SELECT id, full_name, role, avatar_url FROM users WHERE id = $1", id)
-	return u, err
+	if err != nil {
+		return u, err
+	}
+
+	// Fetch permissions
+	var perms []string
+	err = r.db.SelectContext(ctx, &perms, "SELECT permission FROM user_permissions WHERE user_id = $1", id)
+	if err == nil {
+		u.Permissions = perms
+	} else {
+		u.Permissions = []string{}
+	}
+
+	return u, nil
 }
 
 func (r *chatRepo) GetConversationByID(ctx context.Context, convID int64) (*domain.Conversation, error) {
@@ -312,4 +346,16 @@ func (r *chatRepo) GetConversationByID(ctx context.Context, convID int64) (*doma
 		return nil, err
 	}
 	return &conv, nil
+}
+func (r *chatRepo) GetTotalUnreadCount(ctx context.Context, userID int64) (int, error) {
+	var count int
+	query := `
+		SELECT COUNT(*) 
+		FROM messages m
+		JOIN conversations c ON m.conversation_id = c.id
+		WHERE (c.buyer_id = $1 OR c.admin_id = $1)
+		AND m.sender_id != $1
+		AND m.is_read = false`
+	err := r.db.GetContext(ctx, &count, query, userID)
+	return count, err
 }

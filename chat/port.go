@@ -20,6 +20,7 @@ type Service interface {
 	UnregisterPresence(ctx context.Context, userID int64)
 	IsUserOnline(userID int64) bool
 	SearchUsers(ctx context.Context, query string) ([]*domain.User, error)
+	GetTotalUnreadCount(ctx context.Context, userID int64) (int, error)
 }
 
 type ChatRepo interface {
@@ -37,6 +38,8 @@ type ChatRepo interface {
 	GetUserName(ctx context.Context, userID int64) (string, error)
 	SearchUsers(ctx context.Context, query string) ([]*domain.User, error)
 	GetConversationByID(ctx context.Context, convID int64) (*domain.Conversation, error)
+	HasPermission(ctx context.Context, userID int64, permission string) (bool, error)
+	GetTotalUnreadCount(ctx context.Context, userID int64) (int, error)
 }
 
 type ChatPubSub interface {

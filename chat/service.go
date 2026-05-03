@@ -27,6 +27,16 @@ func (s *service) SendMessage(ctx context.Context, senderID, receiverID int64, t
 	// We should try to find the correct receiver from context or conversation if possible.
 	// But usually, the handler should provide the correct withID.
 
+	// Permission Check: If moderator, must have 'chat' permission
+	hasChatAccess, _ := s.repo.HasPermission(ctx, senderID, "chat")
+	if !hasChatAccess {
+		// Only Buyers can send messages without 'chat' permission (since they are the ones seeking support)
+		role, _ := s.repo.GetUserRole(ctx, senderID)
+		if role == "moderator" {
+			return nil, fmt.Errorf("unauthorized to send messages")
+		}
+	}
+
 	conv, err := s.repo.FindOrCreateConversation(ctx, senderID, receiverID)
 	if err != nil {
 		return nil, err
@@ -69,23 +79,20 @@ func (s *service) SendMessage(ctx context.Context, senderID, receiverID int64, t
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 
-		receiverChannel := fmt.Sprintf("chat_%d", actualReceiverID)
-		
-		err := s.pubsub.PublishMessage(ctx, receiverChannel, savedMsg)
-		if err != nil {
-			// Fail silently for cleaner terminal
-		}
+		// Always broadcast to the buyer's personal channel
+		buyerChannel := fmt.Sprintf("chat_%d", conv.BuyerID)
+		s.pubsub.PublishMessage(ctx, buyerChannel, savedMsg)
 
-		// Also publish to chat_admins so ALL admins can see the update
-		if receiverChannel != "chat_admins" {
-			err = s.pubsub.PublishMessage(ctx, "chat_admins", savedMsg)
-			if err != nil {
-				slog.Error("Redis Publish Failed (Admins)", "error", err, "chan", "chat_admins")
+		// Always broadcast to the chat_admins channel
+		s.pubsub.PublishMessage(ctx, "chat_admins", savedMsg)
+
+		// If there is an assigned admin and it's not already covered by buyerChannel/chat_admins
+		if conv.AdminID != nil {
+			adminChannel := fmt.Sprintf("chat_%d", *conv.AdminID)
+			if adminChannel != buyerChannel {
+				s.pubsub.PublishMessage(ctx, adminChannel, savedMsg)
 			}
 		}
-
-		senderChannel := fmt.Sprintf("chat_%d", senderID)
-		_ = s.pubsub.PublishMessage(ctx, senderChannel, savedMsg)
 	}()
 
 	return savedMsg, nil
@@ -107,6 +114,21 @@ func (s *service) GetConversation(ctx context.Context, userID1, userID2 int64) (
 }
 
 func (s *service) GetConversations(ctx context.Context, userID int64) ([]*domain.Conversation, error) {
+	// Permission Check for Moderators
+	role, err := s.repo.GetUserRole(ctx, userID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get user role: %w", err)
+	}
+	if role == "moderator" {
+		hasChatAccess, err := s.repo.HasPermission(ctx, userID, "chat")
+		if err != nil {
+			slog.Error("Permission check failed", "error", err, "userID", userID)
+			return nil, fmt.Errorf("permission check failed")
+		}
+		if !hasChatAccess {
+			return nil, fmt.Errorf("unauthorized: missing chat permission")
+		}
+	}
 	return s.repo.ListConversations(ctx, userID)
 }
 
@@ -124,9 +146,28 @@ func (s *service) Subscribe(ctx context.Context, userID, withID int64, handler f
 		}
 	}
 
+	// Permission Check for Admins/Moderators
 	role, err := s.repo.GetUserRole(ctx, userID)
-	if err == nil && (role == "admin" || role == "moderator") {
+	if err != nil {
+		if err != context.Canceled {
+			slog.Error("Failed to get user role for subscription", "error", err, "userID", userID)
+		}
+		return nil
+	}
+
+	if role == "admin" {
 		return s.pubsub.SubscribeToMessages(ctx, "chat_admins", handler)
+	}
+
+	if role == "moderator" {
+		hasChatAccess, err := s.repo.HasPermission(ctx, userID, "chat")
+		if err != nil {
+			slog.Error("Permission check failed for moderator", "error", err, "userID", userID)
+			return nil
+		}
+		if hasChatAccess {
+			return s.pubsub.SubscribeToMessages(ctx, "chat_admins", handler)
+		}
 	}
 
 	return nil
@@ -184,17 +225,14 @@ func (s *service) UpdateMessage(ctx context.Context, userID, msgID int64, newTex
 	msg.MessageText = &newText
 	msg.Type = "update"
 
-	// Populating receiver ID from conversation
-	convs, err := s.repo.ListConversations(ctx, userID)
-	if err == nil {
-		for _, c := range convs {
-			if c.ID == msg.ConversationID {
-				if c.BuyerID != userID {
-					msg.ReceiverID = c.BuyerID
-				} else if c.AdminID != nil {
-					msg.ReceiverID = *c.AdminID
-				}
-				break
+	// Ensure receiver ID is set correctly for broadcast
+	if msg.ReceiverID == 0 || msg.ReceiverID == userID {
+		conv, err := s.repo.GetConversationByID(ctx, msg.ConversationID)
+		if err == nil {
+			if conv.BuyerID != userID {
+				msg.ReceiverID = conv.BuyerID
+			} else if conv.AdminID != nil {
+				msg.ReceiverID = *conv.AdminID
 			}
 		}
 	}
@@ -222,8 +260,9 @@ func (s *service) DeleteMessage(ctx context.Context, userID, msgID int64) error 
 		return err
 	}
 
-	// Auth: Only sender can delete their own message
-	if msg.SenderID != userID {
+	// Auth: Sender can delete own message; admin/moderator can delete any message
+	role, _ := s.repo.GetUserRole(ctx, userID)
+	if msg.SenderID != userID && role != "admin" && role != "moderator" {
 		return fmt.Errorf("unauthorized to delete this message")
 	}
 
@@ -234,17 +273,14 @@ func (s *service) DeleteMessage(ctx context.Context, userID, msgID int64) error 
 
 	msg.Type = "delete"
 
-	// Populating receiver ID from conversation
-	convs, err := s.repo.ListConversations(ctx, userID)
-	if err == nil {
-		for _, c := range convs {
-			if c.ID == msg.ConversationID {
-				if c.BuyerID != userID {
-					msg.ReceiverID = c.BuyerID
-				} else if c.AdminID != nil {
-					msg.ReceiverID = *c.AdminID
-				}
-				break
+	// Ensure receiver ID is set correctly for broadcast
+	if msg.ReceiverID == 0 || msg.ReceiverID == userID {
+		conv, err := s.repo.GetConversationByID(ctx, msg.ConversationID)
+		if err == nil {
+			if conv.BuyerID != userID {
+				msg.ReceiverID = conv.BuyerID
+			} else if conv.AdminID != nil {
+				msg.ReceiverID = *conv.AdminID
 			}
 		}
 	}
@@ -275,18 +311,17 @@ func (s *service) IsAdmin(ctx context.Context, userID int64) (string, error) {
 }
 
 func (s *service) DeleteMessages(ctx context.Context, userID int64, msgIDs []int64) error {
-	// 1. Get all messages to know their conversation and sender
+	// Fetch role once outside loop for efficiency
+	role, _ := s.repo.GetUserRole(ctx, userID)
+	isAdminUser := role == "admin" || role == "moderator"
+
 	for _, id := range msgIDs {
 		msg, err := s.repo.GetMessageByID(ctx, id)
 		if err != nil {
 			continue
 		}
 
-		// Auth check (Only sender or Admin can delete)
-		// For now we trust the userID passed from handler which is authenticated
-		// But let's verify if user is sender or admin
-		role, _ := s.repo.GetUserRole(ctx, userID)
-		if msg.SenderID != userID && role != "admin" {
+		if msg.SenderID != userID && !isAdminUser {
 			continue
 		}
 
@@ -295,10 +330,32 @@ func (s *service) DeleteMessages(ctx context.Context, userID int64, msgIDs []int
 			continue
 		}
 
-		// Broadcast delete event
 		msg.Type = "delete"
-		s.pubsub.PublishMessage(ctx, fmt.Sprintf("chat_%d", msg.ReceiverID), msg)
-		s.pubsub.PublishMessage(ctx, "chat_admins", msg)
+		
+		// Determine receiver for broadcast
+		if msg.ReceiverID == 0 || msg.ReceiverID == userID {
+			conv, err := s.repo.GetConversationByID(ctx, msg.ConversationID)
+			if err == nil {
+				if conv.BuyerID != userID {
+					msg.ReceiverID = conv.BuyerID
+				} else if conv.AdminID != nil {
+					msg.ReceiverID = *conv.AdminID
+				}
+			}
+		}
+
+		// Broadcast to specific user and all admins
+		go func(m *domain.Message) {
+			bctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
+			
+			receiverChannel := fmt.Sprintf("chat_%d", m.ReceiverID)
+			s.pubsub.PublishMessage(bctx, receiverChannel, m)
+			if receiverChannel != "chat_admins" {
+				s.pubsub.PublishMessage(bctx, "chat_admins", m)
+			}
+			s.pubsub.PublishMessage(bctx, fmt.Sprintf("chat_%d", userID), m)
+		}(msg)
 	}
 
 	return nil
@@ -342,4 +399,7 @@ func (s *service) DeleteConversation(ctx context.Context, userID, convID int64) 
 
 func (s *service) SearchUsers(ctx context.Context, query string) ([]*domain.User, error) {
 	return s.repo.SearchUsers(ctx, query)
+}
+func (s *service) GetTotalUnreadCount(ctx context.Context, userID int64) (int, error) {
+	return s.repo.GetTotalUnreadCount(ctx, userID)
 }

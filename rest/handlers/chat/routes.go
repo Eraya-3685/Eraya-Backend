@@ -17,5 +17,6 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 		r.Post("/messages/bulk-delete", h.BulkDeleteMessages)
 		r.Get("/users/search", h.SearchUsers)
 		r.Get("/ws", h.HandleConnections)
+		r.Get("/unread-count", h.GetUnreadCount)
 	})
 }

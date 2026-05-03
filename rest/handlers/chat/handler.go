@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"eraya/chat"
 	"eraya/domain"
+	"eraya/util"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -133,6 +134,10 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
+	// Fetch role ONCE at connection time, not on every message
+	userRole, _ := h.svc.IsAdmin(ctx, userID)
+	isAdminUser := userRole == "admin" || userRole == "moderator"
+
 	// Subscribe to incoming messages
 	go func() {
 		err := h.svc.Subscribe(ctx, userID, withID, func(msg *domain.Message) {
@@ -145,31 +150,27 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 					show = true
 				}
 			case "delete_conversation":
-				show = true // Sent to specific channels, so if received, it's relevant
+				show = true
 			default:
-				role, _ := h.svc.IsAdmin(ctx, userID)
-				isAdmin := (role == "admin" || role == "moderator")
+				// 1. Is this message from ME? (To confirm "Sent" status)
+				// 2. Is this message for ME? (To receive real-time reply)
+				isMe := (msg.SenderID == userID)
+				isForMe := (msg.ReceiverID == userID)
 
-				if isAdmin {
-					show = true // Admins and Moderators always see all their messages for real-time sidebar updates
-				} else {
-					// Buyer logic
-					if withID != 0 {
-						if msg.SenderID == withID || msg.ReceiverID == withID || msg.SenderID == userID {
-							show = true
-						}
-					} else {
-						if msg.ReceiverID == userID || msg.SenderID == userID {
-							show = true
-						}
-					}
+				if isMe || isForMe {
+					show = true
+				} else if isAdminUser && withID != 0 && (msg.SenderID == withID || msg.ReceiverID == withID) {
+					// Admin viewing a specific conversation
+					show = true
+				} else if isAdminUser && withID == 0 {
+					// Admin in general view list
+					show = true
 				}
 			}
 
 			if show {
-				// Broadcast the message to both parties
 				broadcastMsg := map[string]any{
-					"type":            "message",
+					"type":            msg.Type,
 					"id":              msg.ID,
 					"sender_id":       msg.SenderID,
 					"sender_name":     msg.SenderName,
@@ -188,6 +189,11 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 		})
 		if err != nil && err != context.Canceled {
 			slog.Error("Failed to subscribe to chat", "error", err)
+			// Send error message to client via writeQueue
+			writeQueue <- map[string]string{
+				"type":  "error",
+				"error": "You don't have permission to access the chat system.",
+			}
 		}
 	}()
 
@@ -228,12 +234,22 @@ func (h *Handler) HandleConnections(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 
-
-				sentMsg, err := h.svc.SendMessage(ctx, userID, targetID, text, replyToID, msg["tempId"])
+				sentMsg, err := h.svc.SendMessage(ctx, userID, targetID, text, replyToID, msg["temp_id"])
 				if err != nil {
 					writeQueue <- map[string]string{"error": "Failed to send: " + err.Error()}
 				} else {
-					_ = sentMsg // Result is broadcasted via Redis
+					// Directly confirm to the sender so the UI updates to 'sent' immediately
+					writeQueue <- map[string]any{
+						"type":            "message",
+						"id":              sentMsg.ID,
+						"temp_id":         sentMsg.TempID,
+						"sender_id":       sentMsg.SenderID,
+						"receiver_id":     sentMsg.ReceiverID,
+						"conversation_id": sentMsg.ConversationID,
+						"message_text":    sentMsg.MessageText,
+						"created_at":      sentMsg.CreatedAt,
+						"status":          "sent",
+					}
 				}
 			}
 		}
@@ -332,4 +348,27 @@ func (h *Handler) SearchUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	json.NewEncoder(w).Encode(users)
+}
+
+// GetUnreadCount godoc
+// @Summary Get total unread messages count
+// @Description Get the total number of unread messages for the authenticated user across all conversations.
+// @Tags chat
+// @Success 200 {object} map[string]int
+// @Router /chat/unread-count [get]
+func (h *Handler) GetUnreadCount(w http.ResponseWriter, r *http.Request) {
+	userIDVal := r.Context().Value("user_id")
+	if userIDVal == nil {
+		util.SendError(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	userID := userIDVal.(int64)
+
+	count, err := h.svc.GetTotalUnreadCount(r.Context(), userID)
+	if err != nil {
+		util.SendError(w, http.StatusInternalServerError, "failed to get unread count")
+		return
+	}
+
+	util.SendData(w, http.StatusOK, map[string]int{"unread_count": count})
 }

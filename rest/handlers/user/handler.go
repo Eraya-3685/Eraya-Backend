@@ -386,6 +386,29 @@ func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(users)
 }
 
+// GetUserByID godoc
+// @Summary Get any user profile by ID
+// @Description Retrieve profile details of any user (admin/moderator only).
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Param id path int true "User ID"
+// @Success 200 {object} domain.User
+// @Router /users/{id} [get]
+func (h *Handler) GetUserByID(w http.ResponseWriter, r *http.Request) {
+	idStr := chi.URLParam(r, "id")
+	userID, _ := strconv.ParseInt(idStr, 10, 64)
+
+	user, err := h.svc.GetProfile(r.Context(), userID)
+	if err != nil || user == nil {
+		http.Error(w, "user not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(user)
+}
+
 // UploadAvatar godoc
 // @Summary Upload or update user avatar
 // @Description Upload a profile photo (max 5MB). Stores to Supabase and saves URL to DB.
