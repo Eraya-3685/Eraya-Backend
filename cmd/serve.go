@@ -89,18 +89,20 @@ func Serve() {
 	settingsHandler := settings_handler.NewHandler(settingsService)
 
 	bkashClient := bkash.NewClient(cnf.BKash)
-	orderService := order.NewService(cartRepo, orderRepo, productService, settingsService, mailer, userService)
+
+	// Initialize Chat Service first because Order Service depends on it for Stats
+	chatRepo := repo.NewChatRepo(dbCon)
+	chatPubSub := repo.NewChatPubSub(redisDB)
+	chatService := chat_pkg.NewService(chatRepo, chatPubSub)
+	chatHandler := chat_handler.NewHandler(chatService)
+
+	orderService := order.NewService(cartRepo, orderRepo, productService, settingsService, mailer, userService, chatService)
 	orderHandler := order_handler.NewHandler(orderService, bkashClient)
 
 	orderVerifier := repo.NewOrderVerifier(dbCon)
 	reviewRepo := repo.NewReviewRepo(dbCon)
 	reviewService := review.NewService(reviewRepo, orderVerifier)
 	reviewHandler := review_handler.NewHandler(reviewService)
-
-	chatRepo := repo.NewChatRepo(dbCon)
-	chatPubSub := repo.NewChatPubSub(redisDB)
-	chatService := chat_pkg.NewService(chatRepo, chatPubSub)
-	chatHandler := chat_handler.NewHandler(chatService)
 
 	wishlistRepo := repo.NewWishlistRepo(dbCon)
 	wishlistService := wishlist.NewService(wishlistRepo)

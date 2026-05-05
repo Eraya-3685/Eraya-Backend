@@ -2,6 +2,7 @@ package order
 
 import (
 	"context"
+	"eraya/chat"
 	"eraya/domain"
 	"eraya/infra/mail"
 	"eraya/product"
@@ -11,9 +12,9 @@ import (
 	"fmt"
 	"log/slog"
 	"math/rand"
+	"strings"
 	"sync"
 	"time"
-	"strings"
 
 	"golang.org/x/sync/errgroup"
 )
@@ -25,9 +26,10 @@ type service struct {
 	settingsSvc settings.Service
 	mailer      mail.Mailer
 	userSvc     user.Service
+	chatSvc     chat.Service
 }
 
-func NewService(cartRepo domain.CartRepo, orderRepo domain.OrderRepo, productSvc product.Service, settingsSvc settings.Service, mailer mail.Mailer, userSvc user.Service) Service {
+func NewService(cartRepo domain.CartRepo, orderRepo domain.OrderRepo, productSvc product.Service, settingsSvc settings.Service, mailer mail.Mailer, userSvc user.Service, chatSvc chat.Service) Service {
 	return &service{
 		cartRepo:    cartRepo,
 		orderRepo:   orderRepo,
@@ -35,6 +37,7 @@ func NewService(cartRepo domain.CartRepo, orderRepo domain.OrderRepo, productSvc
 		settingsSvc: settingsSvc,
 		mailer:      mailer,
 		userSvc:     userSvc,
+		chatSvc:     chatSvc,
 	}
 }
 
@@ -270,4 +273,95 @@ func (s *service) AdminDeleteOrder(ctx context.Context, id int64, otp string, ad
 		}
 	}
 	return s.orderRepo.Delete(ctx, id)
+}
+func (s *service) AdminGetDashboardStats(ctx context.Context) (*domain.DashboardStats, error) {
+	stats := &domain.DashboardStats{
+		OrderStatusStats: make(map[string]int),
+	}
+
+	// 1. Fetch all orders
+	orders, err := s.orderRepo.ListAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Aggregate stats
+	revenueMap := make(map[string]float64)
+	months := []string{"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"}
+	for _, m := range months {
+		revenueMap[m] = 0
+	}
+
+	for _, o := range orders {
+		stats.TotalOrders++
+		stats.OrderStatusStats[o.OrderStatus]++
+
+		if o.PaymentStatus == "Paid" {
+			stats.TotalRevenue += o.TotalPrice
+			month := o.CreatedAt.Format("Jan")
+			revenueMap[month] += o.TotalPrice
+		}
+		if o.OrderStatus == "Delivered" {
+			stats.TotalSold++
+		}
+	}
+
+	// 3. Prepare Revenue Chart Data
+	for _, m := range months {
+		stats.RevenueChart = append(stats.RevenueChart, domain.ChartData{
+			Name:  m,
+			Value: revenueMap[m],
+		})
+	}
+
+	// 4. Fetch Products Count
+	_, totalCount, err := s.productSvc.GetProducts(ctx, 1, 1, "", nil, "", 0, 0)
+	if err == nil {
+		stats.TotalProducts = int(totalCount)
+	}
+
+	// 5. Prepare Visitor Chart (Mocking for now as we don't track visits yet, or use user registration growth)
+	stats.VisitorChart = []domain.ChartData{
+		{Name: "W1", This: 400, Last: 300},
+		{Name: "W2", This: 300, Last: 400},
+		{Name: "W3", This: 500, Last: 350},
+		{Name: "W4", This: 450, Last: 480},
+	}
+
+	// 6. Fetch Recent Messages
+	convs, err := s.chatSvc.GetConversations(ctx, 0) // Passing 0 or some internal admin ID to get all
+	if err == nil {
+		for i, c := range convs {
+			if i >= 4 {
+				break
+			}
+			msg := domain.RecentMessage{
+				Name:   c.BuyerName,
+				Msg:    "New conversation started",
+				Time:   c.UpdatedAt.Format("03:04 PM"),
+				Unread: c.UnreadCount,
+			}
+			if c.LastMessage != nil {
+				msg.Msg = *c.LastMessage
+			}
+			stats.RecentMessages = append(stats.RecentMessages, msg)
+		}
+	}
+
+	// 7. Fetch Recent Contacts
+	users, err := s.userSvc.ListUsers(ctx)
+	if err == nil {
+		for i, u := range users {
+			if i >= 10 {
+				break
+			}
+			stats.RecentContacts = append(stats.RecentContacts, domain.RecentContact{
+				ID:        u.ID,
+				FullName:  u.FullName,
+				AvatarURL: u.AvatarURL,
+			})
+		}
+	}
+
+	return stats, nil
 }

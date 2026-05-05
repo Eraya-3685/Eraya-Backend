@@ -437,3 +437,23 @@ func (h *Handler) AdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 }
+
+// AdminGetStats godoc
+// @Summary Get dashboard analytics (Admin)
+// @Description Retrieve aggregated metrics for the admin dashboard (admin only).
+// @Tags admin
+// @Produce json
+// @Security BearerAuth
+// @Success 200 {object} domain.DashboardStats
+// @Router /admin/orders/stats [get]
+func (h *Handler) AdminGetStats(w http.ResponseWriter, r *http.Request) {
+	stats, err := h.svc.AdminGetDashboardStats(r.Context())
+	if err != nil {
+		slog.Error("Admin failed to get dashboard stats", "error", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}

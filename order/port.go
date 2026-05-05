@@ -19,6 +19,7 @@ type Service interface {
 	AdminUpdateOrderStatus(ctx context.Context, orderID int64, status string, estimatedDate string) error
 	AdminRequestDeleteOTP(ctx context.Context, adminID int64) error
 	AdminDeleteOrder(ctx context.Context, id int64, otp string, adminID int64) error
+	AdminGetDashboardStats(ctx context.Context) (*domain.DashboardStats, error)
 }
 
 type CartRepo interface {
