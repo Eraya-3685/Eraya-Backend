@@ -12,9 +12,11 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/gorilla/websocket"
 )
 
 type Handler struct {
@@ -26,6 +28,61 @@ func NewHandler(svc order.Service, bkashClient *bkash.Client) *Handler {
 	return &Handler{
 		svc:         svc,
 		bkashClient: bkashClient,
+	}
+}
+
+var adminUpgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // Allow all origins for admin panel
+	},
+}
+
+var (
+	adminConns = make(map[*websocket.Conn]bool)
+	adminMu    sync.Mutex
+)
+
+func broadcastToAdmins(msg any) {
+	adminMu.Lock()
+	defer adminMu.Unlock()
+	for conn := range adminConns {
+		if err := conn.WriteJSON(msg); err != nil {
+			slog.Error("Failed to write to admin websocket, closing connection", "error", err)
+			conn.Close()
+			delete(adminConns, conn)
+		}
+	}
+}
+
+func (h *Handler) AdminWebSocket(w http.ResponseWriter, r *http.Request) {
+	ws, err := adminUpgrader.Upgrade(w, r, nil)
+	if err != nil {
+		slog.Error("Failed to upgrade admin connection", "error", err)
+		return
+	}
+	
+	adminMu.Lock()
+	adminConns[ws] = true
+	adminMu.Unlock()
+
+	defer func() {
+		ws.Close()
+		adminMu.Lock()
+		delete(adminConns, ws)
+		adminMu.Unlock()
+	}()
+
+	// Keep connection alive with simple read loop
+	for {
+		var msg map[string]string
+		if err := ws.ReadJSON(&msg); err != nil {
+			break
+		}
+		if msg["type"] == "ping" {
+			_ = ws.WriteJSON(map[string]string{"type": "pong"})
+		}
 	}
 }
 
@@ -166,6 +223,12 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"order": order,
+	})
+
+	// Broadcast real-time order event to connected admins
+	broadcastToAdmins(map[string]any{
+		"type":    "NEW_ORDER",
+		"message": "A customer placed a new order!",
 	})
 }
 
@@ -344,6 +407,12 @@ func (h *Handler) AdminConfirmOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+
+	// Broadcast confirmed order event to connected admins
+	broadcastToAdmins(map[string]any{
+		"type":    "ORDER_CONFIRMED",
+		"message": fmt.Sprintf("Order #%d confirmed!", orderID),
+	})
 }
 
 // AdminDeleteOrder godoc
@@ -378,6 +447,12 @@ func (h *Handler) AdminDeleteOrder(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Order deleted successfully"))
+
+	// Broadcast deleted order event to connected admins
+	broadcastToAdmins(map[string]any{
+		"type":    "ORDER_DELETED",
+		"message": fmt.Sprintf("Order #%d deleted!", orderID),
+	})
 }
 
 // AdminRequestDeleteOTP godoc
@@ -436,6 +511,12 @@ func (h *Handler) AdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+
+	// Broadcast status updated event to connected admins
+	broadcastToAdmins(map[string]any{
+		"type":    "ORDER_STATUS_UPDATED",
+		"message": fmt.Sprintf("Order #%d status updated to %s", orderID, req.Status),
+	})
 }
 
 // AdminGetStats godoc
@@ -444,10 +525,13 @@ func (h *Handler) AdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
 // @Tags admin
 // @Produce json
 // @Security BearerAuth
+// @Param timeframe query string false "Timeframe (day, week, month, year)"
 // @Success 200 {object} domain.DashboardStats
 // @Router /admin/orders/stats [get]
 func (h *Handler) AdminGetStats(w http.ResponseWriter, r *http.Request) {
-	stats, err := h.svc.AdminGetDashboardStats(r.Context())
+	timeframe := r.URL.Query().Get("timeframe")
+	adminID := r.Context().Value("user_id").(int64)
+	stats, err := h.svc.AdminGetDashboardStats(r.Context(), adminID, timeframe)
 	if err != nil {
 		slog.Error("Admin failed to get dashboard stats", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

@@ -432,6 +432,18 @@ func (s *service) VerifyOTP(ctx context.Context, userID int64, purpose string, c
 	return false, nil
 }
 
+func (s *service) CheckOTP(ctx context.Context, userID int64, purpose string, code string) (bool, error) {
+	key := fmt.Sprintf("otp:%s:%d", purpose, userID)
+	val, err := s.redis.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return false, nil // Expired or not found
+		}
+		return false, err
+	}
+	return val == code, nil
+}
+
 func generateRandomOTP(length int) (string, error) {
 	const digits = "0123456789"
 	result := make([]byte, length)
@@ -518,9 +530,9 @@ func (s *service) BulkUpdateRole(ctx context.Context, adminID int64, userIDs []i
 		return errors.New("invalid role: must be admin, moderator, or buyer")
 	}
 
-	// 2. Security Check: ALL role changes REQUIRE OTP AND Password
-	if otp == "" || password == "" {
-		return errors.New("OTP and Password are required for all role modifications")
+	// 2. Security Check: Password is required.
+	if password == "" {
+		return errors.New("administrative password is required")
 	}
 
 	// Verify Performer's Password
@@ -530,15 +542,6 @@ func (s *service) BulkUpdateRole(ctx context.Context, adminID int64, userIDs []i
 	}
 	if !util.CheckPasswordHash(password, admin.PasswordHash) {
 		return errors.New("invalid administrative password")
-	}
-
-	// Verify OTP
-	valid, err := s.VerifyOTP(ctx, adminID, "role_change", otp)
-	if err != nil {
-		return err
-	}
-	if !valid {
-		return errors.New("invalid or expired OTP")
 	}
 
 	// Adjust permissions based on role

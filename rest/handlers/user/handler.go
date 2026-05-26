@@ -544,6 +544,38 @@ func (h *Handler) RequestOTP(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
+type otpVerifyReq struct {
+	Purpose string `json:"purpose"`
+	OTP     string `json:"otp"`
+}
+
+func (h *Handler) VerifyOTPOnly(w http.ResponseWriter, r *http.Request) {
+	var req otpVerifyReq
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	userIDVal := r.Context().Value("user_id")
+	if userIDVal == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	userID := userIDVal.(int64)
+
+	valid, err := h.svc.CheckOTP(r.Context(), userID, req.Purpose, req.OTP)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !valid {
+		http.Error(w, "Invalid or expired OTP", http.StatusBadRequest)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
 type secureUpdateReq struct {
 	OTP      string  `json:"otp"`
 	Purpose  string  `json:"purpose"`

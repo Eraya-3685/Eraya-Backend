@@ -34,27 +34,65 @@ func (r *reviewRepo) Create(ctx context.Context, rev *domain.Review) (*domain.Re
 
 func (r *reviewRepo) ListByProduct(ctx context.Context, productID int64) ([]*domain.Review, error) {
 	query := `
-		SELECT r.*, u.full_name as "user.full_name", u.id as "user.id"
+		SELECT r.id, r.user_id, r.product_id, r.rating, r.comment, r.created_at, r.is_verified, r.is_approved,
+		       u.id, u.full_name
 		FROM reviews r
 		JOIN users u ON r.user_id = u.id
 		WHERE r.product_id = $1 AND r.is_approved = true
 		ORDER BY r.created_at DESC
 	`
+	rows, err := r.db.QueryContext(ctx, query, productID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	var reviews []*domain.Review
-	err := r.db.SelectContext(ctx, &reviews, query, productID)
-	return reviews, err
+	for rows.Next() {
+		rev := &domain.Review{}
+		u := &domain.User{}
+		err := rows.Scan(
+			&rev.ID, &rev.UserID, &rev.ProductID, &rev.Rating, &rev.Comment, &rev.CreatedAt, &rev.IsVerified, &rev.IsApproved,
+			&u.ID, &u.FullName,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rev.User = u
+		reviews = append(reviews, rev)
+	}
+	return reviews, nil
 }
 
 func (r *reviewRepo) ListAll(ctx context.Context) ([]*domain.Review, error) {
 	query := `
-		SELECT r.*, u.full_name as "user.full_name", u.id as "user.id"
+		SELECT r.id, r.user_id, r.product_id, r.rating, r.comment, r.created_at, r.is_verified, r.is_approved,
+		       u.id, u.full_name
 		FROM reviews r
 		JOIN users u ON r.user_id = u.id
 		ORDER BY r.created_at DESC
 	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
 	var reviews []*domain.Review
-	err := r.db.SelectContext(ctx, &reviews, query)
-	return reviews, err
+	for rows.Next() {
+		rev := &domain.Review{}
+		u := &domain.User{}
+		err := rows.Scan(
+			&rev.ID, &rev.UserID, &rev.ProductID, &rev.Rating, &rev.Comment, &rev.CreatedAt, &rev.IsVerified, &rev.IsApproved,
+			&u.ID, &u.FullName,
+		)
+		if err != nil {
+			return nil, err
+		}
+		rev.User = u
+		reviews = append(reviews, rev)
+	}
+	return reviews, nil
 }
 
 func (r *reviewRepo) Approve(ctx context.Context, id int64) error {
@@ -156,7 +194,7 @@ func (v *orderVerifier) HasDeliveredOrder(ctx context.Context, userID, productID
 		SELECT COUNT(o.id) 
 		FROM orders o
 		JOIN order_items oi ON o.id = oi.order_id
-		WHERE o.user_id = $1 AND oi.product_id = $2 AND o.order_status = 'delivered'
+		WHERE o.user_id = $1 AND oi.product_id = $2 AND LOWER(o.order_status) = 'delivered'
 	`
 	var count int
 	err := v.db.GetContext(ctx, &count, query, userID, productID)

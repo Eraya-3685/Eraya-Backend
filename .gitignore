@@ -27,3 +27,7 @@ Thumbs.db
 
 # Swagger generated docs (Optional to ignore, usually kept if needed for deployment)
 # docs/
+
+# Custom executables
+eraya
+main

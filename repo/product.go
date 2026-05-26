@@ -59,7 +59,7 @@ func (r *productRepo) Create(ctx context.Context, p *domain.Product) (*domain.Pr
 	return p, tx.Commit()
 }
 
-func (r *productRepo) List(ctx context.Context, page, limit int64, search string, categoryIDs []int, sortBy string, minPrice, maxPrice float64) ([]*domain.Product, error) {
+func (r *productRepo) List(ctx context.Context, page, limit int64, search string, categoryIDs []int, sortBy string, minPrice, maxPrice float64, adminMode bool) ([]*domain.Product, error) {
 	var args []any
 	nextParam := 1
 
@@ -67,7 +67,11 @@ func (r *productRepo) List(ctx context.Context, page, limit int64, search string
 	if len(categoryIDs) > 0 {
 		baseQuery += ` JOIN product_categories pc ON p.id = pc.product_id`
 	}
-	baseQuery += ` WHERE p.is_active = true`
+	if !adminMode {
+		baseQuery += ` WHERE p.is_active = true`
+	} else {
+		baseQuery += ` WHERE 1=1`
+	}
 
 	if len(categoryIDs) > 0 {
 		baseQuery += fmt.Sprintf(` AND pc.category_id = ANY($%d)`, nextParam)
@@ -85,9 +89,21 @@ func (r *productRepo) List(ctx context.Context, page, limit int64, search string
 		nextParam++
 	}
 	if search != "" {
-		baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam+1)
-		args = append(args, "%"+search+"%", "%"+search+"%")
-		nextParam += 2
+		digits := ""
+		for _, char := range search {
+			if char >= '0' && char <= '9' {
+				digits += string(char)
+			}
+		}
+		if digits != "" {
+			baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d OR p.id::text ILIKE $%d)`, nextParam, nextParam+1, nextParam+2)
+			args = append(args, "%"+search+"%", "%"+search+"%", "%"+digits+"%")
+			nextParam += 3
+		} else {
+			baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam+1)
+			args = append(args, "%"+search+"%", "%"+search+"%")
+			nextParam += 2
+		}
 	}
 
 	orderBy := "p.created_at DESC"
@@ -215,7 +231,7 @@ func (r *productRepo) IncrementStock(ctx context.Context, id int64, quantity int
 	return err
 }
 
-func (r *productRepo) Count(ctx context.Context, search string, categoryIDs []int, minPrice, maxPrice float64) (int64, error) {
+func (r *productRepo) Count(ctx context.Context, search string, categoryIDs []int, minPrice, maxPrice float64, adminMode bool) (int64, error) {
 	var args []interface{}
 	nextParam := 1
 
@@ -223,7 +239,11 @@ func (r *productRepo) Count(ctx context.Context, search string, categoryIDs []in
 	if len(categoryIDs) > 0 {
 		baseQuery += ` JOIN product_categories pc ON p.id = pc.product_id`
 	}
-	baseQuery += ` WHERE p.is_active = true`
+	if !adminMode {
+		baseQuery += ` WHERE p.is_active = true`
+	} else {
+		baseQuery += ` WHERE 1=1`
+	}
 
 	if len(categoryIDs) > 0 {
 		baseQuery += fmt.Sprintf(` AND pc.category_id = ANY($%d)`, nextParam)
@@ -241,9 +261,21 @@ func (r *productRepo) Count(ctx context.Context, search string, categoryIDs []in
 		nextParam++
 	}
 	if search != "" {
-		baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam+1)
-		args = append(args, "%"+search+"%", "%"+search+"%")
-		nextParam += 2
+		digits := ""
+		for _, char := range search {
+			if char >= '0' && char <= '9' {
+				digits += string(char)
+			}
+		}
+		if digits != "" {
+			baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d OR p.id::text ILIKE $%d)`, nextParam, nextParam+1, nextParam+2)
+			args = append(args, "%"+search+"%", "%"+search+"%", "%"+digits+"%")
+			nextParam += 3
+		} else {
+			baseQuery += fmt.Sprintf(` AND (p.name ILIKE $%d OR p.description ILIKE $%d)`, nextParam, nextParam+1)
+			args = append(args, "%"+search+"%", "%"+search+"%")
+			nextParam += 2
+		}
 	}
 
 	var count int64

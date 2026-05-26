@@ -198,7 +198,7 @@ func (r *chatRepo) ListConversations(ctx context.Context, userID int64) ([]*doma
 			FROM conversations c
 			JOIN users b ON c.buyer_id = b.id
 			LEFT JOIN users a ON c.admin_id = a.id
-			WHERE %s
+			WHERE %s AND EXISTS (SELECT 1 FROM messages m WHERE m.conversation_id = c.id)
 			ORDER BY c.buyer_id, c.updated_at DESC
 		) t ORDER BY updated_at DESC`, condition)
 

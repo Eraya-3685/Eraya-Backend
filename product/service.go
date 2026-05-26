@@ -35,13 +35,13 @@ func (s *service) CreateProduct(ctx context.Context, product *domain.Product) (*
 	return p, err
 }
 
-func (s *service) GetProducts(ctx context.Context, page, limit int64, search string, categoryIDs []int, sortBy string, minPrice, maxPrice float64) ([]*domain.Product, int64, error) {
-	products, err := s.repo.List(ctx, page, limit, search, categoryIDs, sortBy, minPrice, maxPrice)
+func (s *service) GetProducts(ctx context.Context, page, limit int64, search string, categoryIDs []int, sortBy string, minPrice, maxPrice float64, adminMode bool) ([]*domain.Product, int64, error) {
+	products, err := s.repo.List(ctx, page, limit, search, categoryIDs, sortBy, minPrice, maxPrice, adminMode)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	count, err := s.repo.Count(ctx, search, categoryIDs, minPrice, maxPrice)
+	count, err := s.repo.Count(ctx, search, categoryIDs, minPrice, maxPrice, adminMode)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -174,7 +174,7 @@ func (s *service) BulkDeleteCategories(ctx context.Context, ids []int) error {
 }
 
 func (s *service) invalidateCache(ctx context.Context) {
-	products, err := s.repo.List(ctx, 1, 100, "", []int{}, "newest", 0, 0)
+	products, err := s.repo.List(ctx, 1, 100, "", []int{}, "newest", 0, 0, false)
 	if err != nil {
 		slog.Error("Failed to fetch products for cache invalidation", "error", err)
 		return

@@ -17,6 +17,7 @@ type Service interface {
 	UpdatePassword(ctx context.Context, userID int64, password string) error
 	RequestOTP(ctx context.Context, userID int64, purpose string) error
 	VerifyOTP(ctx context.Context, userID int64, purpose string, code string) (bool, error)
+	CheckOTP(ctx context.Context, userID int64, purpose string, code string) (bool, error)
 	ForgotPassword(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, email string, code string, newPassword string) (string, *domain.User, error)
 	DeleteUser(ctx context.Context, userID int64) error

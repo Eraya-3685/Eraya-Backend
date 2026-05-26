@@ -54,15 +54,15 @@ type OrderRepo interface {
 }
 
 type DashboardStats struct {
-	TotalRevenue     float64            `json:"total_revenue"`
-	TotalOrders      int                `json:"total_orders"`
-	TotalSold        int                `json:"total_sold"`
-	TotalProducts    int                `json:"total_products"`
-	RevenueChart     []ChartData        `json:"revenue_chart"`
-	VisitorChart     []ChartData        `json:"visitor_chart"`
-	OrderStatusStats map[string]int     `json:"order_status_stats"`
-	RecentMessages   []RecentMessage    `json:"recent_messages"`
-	RecentContacts   []RecentContact    `json:"recent_contacts"`
+	TotalRevenue     float64         `json:"total_revenue"`
+	TotalOrders      int             `json:"total_orders"`
+	TotalSold        int             `json:"total_sold"`
+	TotalProducts    int             `json:"total_products"`
+	RevenueChart     []ChartData     `json:"revenue_chart"`
+	VisitorChart     []ChartData     `json:"visitor_chart"`
+	OrderStatusStats map[string]int  `json:"order_status_stats"`
+	RecentMessages   []RecentMessage `json:"recent_messages"`
+	RecentContacts   []RecentContact `json:"recent_contacts"`
 }
 
 type ChartData struct {
@@ -73,10 +73,11 @@ type ChartData struct {
 }
 
 type RecentMessage struct {
-	Name   string `json:"name"`
-	Msg    string `json:"msg"`
-	Time   string `json:"time"`
-	Unread int    `json:"unread"`
+	Name      string  `json:"name"`
+	Msg       string  `json:"msg"`
+	Time      string  `json:"time"`
+	Unread    int     `json:"unread"`
+	AvatarURL *string `json:"avatar_url"`
 }
 
 type RecentContact struct {

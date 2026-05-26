@@ -70,11 +70,14 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	isActiveStr := r.FormValue("is_active")
+	isActive := isActiveStr != "false" // default true unless explicitly "false"
+
 	p := &domain.Product{
 		Name:       name,
 		BasePrice:  basePrice,
 		StockCount: stockCount,
-		IsActive:   true,
+		IsActive:   isActive,
 	}
 	if desc != "" {
 		p.Description = &desc
@@ -183,7 +186,10 @@ func (h *Handler) ListProducts(w http.ResponseWriter, r *http.Request) {
 		limit = 10
 	}
 
-	products, count, err := h.svc.GetProducts(r.Context(), page, limit, search, categoryIDs, sort, minPrice, maxPrice)
+	// adminMode=true skips the is_active filter so all products (published+unpublished) are returned
+	adminMode := r.URL.Query().Get("admin") == "true"
+
+	products, count, err := h.svc.GetProducts(r.Context(), page, limit, search, categoryIDs, sort, minPrice, maxPrice, adminMode)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			slog.Error("Failed to list products", "error", err)
@@ -236,6 +242,10 @@ func (h *Handler) UpdateProduct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	p.ID = id
+	// Regenerate slug from name if not provided by client
+	if p.Slug == "" && p.Name != "" {
+		p.Slug = strings.ToLower(strings.ReplaceAll(p.Name, " ", "-"))
+	}
 
 	orphanedURLs, err := h.svc.UpdateProduct(r.Context(), &p)
 	if err != nil {

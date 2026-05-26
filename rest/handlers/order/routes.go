@@ -25,6 +25,7 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 	r.Get("/orders/bkash/callback", h.BKashCallback)
 	r.Route("/admin/orders", func(r chi.Router) {
 		r.Use(middleware.AuthMiddleware(jwtSecret, userSvc), middleware.PermissionMiddleware("orders"))
+		r.Get("/ws", h.AdminWebSocket)
 		r.Get("/", h.AdminGetOrders)
 		r.Get("/stats", h.AdminGetStats)
 		r.Post("/{id}/confirm", h.AdminConfirmOrder)
