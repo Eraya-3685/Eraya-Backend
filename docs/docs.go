@@ -83,6 +83,39 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/orders/stats": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve aggregated metrics for the admin dashboard (admin only).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get dashboard analytics (Admin)",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Timeframe (day, week, month, year)",
+                        "name": "timeframe",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.DashboardStats"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/orders/{id}": {
             "delete": {
                 "security": [
@@ -585,6 +618,29 @@ const docTemplate = `{
                 }
             }
         },
+        "/chat/conversation/{id}/read": {
+            "post": {
+                "description": "Mark all messages in a conversation as read.",
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Mark messages as read",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Conversation ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
         "/chat/conversation/{withID}": {
             "get": {
                 "description": "Fetch all messages between the current user and another user.",
@@ -628,6 +684,83 @@ const docTemplate = `{
                             "type": "array",
                             "items": {
                                 "$ref": "#/definitions/domain.Conversation"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/chat/messages/bulk-delete": {
+            "post": {
+                "description": "Permantently delete multiple messages. Admin or sender only.",
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Delete multiple messages",
+                "parameters": [
+                    {
+                        "description": "Message IDs",
+                        "name": "ids",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No Content"
+                    }
+                }
+            }
+        },
+        "/chat/unread-count": {
+            "get": {
+                "description": "Get the total number of unread messages for the authenticated user across all conversations.",
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Get total unread messages count",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/chat/users/search": {
+            "get": {
+                "description": "Find any user by name or ID to start a conversation.",
+                "tags": [
+                    "chat"
+                ],
+                "summary": "Search users for chat",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search Query",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domain.User"
                             }
                         }
                     }
@@ -1858,6 +1991,38 @@ const docTemplate = `{
             }
         },
         "/users/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "BearerAuth": []
+                    }
+                ],
+                "description": "Retrieve profile details of any user (admin/moderator only).",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get any user profile by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domain.User"
+                        }
+                    }
+                }
+            },
             "delete": {
                 "security": [
                     {
@@ -2097,6 +2262,23 @@ const docTemplate = `{
                 }
             }
         },
+        "domain.ChartData": {
+            "type": "object",
+            "properties": {
+                "last": {
+                    "type": "number"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "this": {
+                    "type": "number"
+                },
+                "value": {
+                    "type": "number"
+                }
+            }
+        },
         "domain.Conversation": {
             "type": "object",
             "properties": {
@@ -2127,8 +2309,58 @@ const docTemplate = `{
                         "$ref": "#/definitions/domain.Message"
                     }
                 },
+                "unread_count": {
+                    "type": "integer"
+                },
                 "updated_at": {
                     "type": "string"
+                }
+            }
+        },
+        "domain.DashboardStats": {
+            "type": "object",
+            "properties": {
+                "order_status_stats": {
+                    "type": "object",
+                    "additionalProperties": {
+                        "type": "integer"
+                    }
+                },
+                "recent_contacts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.RecentContact"
+                    }
+                },
+                "recent_messages": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.RecentMessage"
+                    }
+                },
+                "revenue_chart": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ChartData"
+                    }
+                },
+                "total_orders": {
+                    "type": "integer"
+                },
+                "total_products": {
+                    "type": "integer"
+                },
+                "total_revenue": {
+                    "type": "number"
+                },
+                "total_sold": {
+                    "type": "integer"
+                },
+                "visitor_chart": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/domain.ChartData"
+                    }
                 }
             }
         },
@@ -2352,6 +2584,40 @@ const docTemplate = `{
                     "type": "boolean"
                 },
                 "product_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.RecentContact": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "full_name": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domain.RecentMessage": {
+            "type": "object",
+            "properties": {
+                "avatar_url": {
+                    "type": "string"
+                },
+                "msg": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "time": {
+                    "type": "string"
+                },
+                "unread": {
                     "type": "integer"
                 }
             }

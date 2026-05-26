@@ -24,6 +24,17 @@ definitions:
       product_count:
         type: integer
     type: object
+  domain.ChartData:
+    properties:
+      last:
+        type: number
+      name:
+        type: string
+      this:
+        type: number
+      value:
+        type: number
+    type: object
   domain.Conversation:
     properties:
       admin_id:
@@ -44,8 +55,41 @@ definitions:
         items:
           $ref: '#/definitions/domain.Message'
         type: array
+      unread_count:
+        type: integer
       updated_at:
         type: string
+    type: object
+  domain.DashboardStats:
+    properties:
+      order_status_stats:
+        additionalProperties:
+          type: integer
+        type: object
+      recent_contacts:
+        items:
+          $ref: '#/definitions/domain.RecentContact'
+        type: array
+      recent_messages:
+        items:
+          $ref: '#/definitions/domain.RecentMessage'
+        type: array
+      revenue_chart:
+        items:
+          $ref: '#/definitions/domain.ChartData'
+        type: array
+      total_orders:
+        type: integer
+      total_products:
+        type: integer
+      total_revenue:
+        type: number
+      total_sold:
+        type: integer
+      visitor_chart:
+        items:
+          $ref: '#/definitions/domain.ChartData'
+        type: array
     type: object
   domain.Message:
     properties:
@@ -193,6 +237,28 @@ definitions:
       is_primary:
         type: boolean
       product_id:
+        type: integer
+    type: object
+  domain.RecentContact:
+    properties:
+      avatar_url:
+        type: string
+      full_name:
+        type: string
+      id:
+        type: integer
+    type: object
+  domain.RecentMessage:
+    properties:
+      avatar_url:
+        type: string
+      msg:
+        type: string
+      name:
+        type: string
+      time:
+        type: string
+      unread:
         type: integer
     type: object
   domain.Review:
@@ -543,6 +609,26 @@ paths:
       summary: Request OTP for order deletion (Admin)
       tags:
       - admin
+  /admin/orders/stats:
+    get:
+      description: Retrieve aggregated metrics for the admin dashboard (admin only).
+      parameters:
+      - description: Timeframe (day, week, month, year)
+        in: query
+        name: timeframe
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.DashboardStats'
+      security:
+      - BearerAuth: []
+      summary: Get dashboard analytics (Admin)
+      tags:
+      - admin
   /admin/reviews:
     get:
       description: Retrieve all reviews (admin only).
@@ -779,6 +865,21 @@ paths:
       summary: Delete a conversation
       tags:
       - chat
+  /chat/conversation/{id}/read:
+    post:
+      description: Mark all messages in a conversation as read.
+      parameters:
+      - description: Conversation ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      responses:
+        "204":
+          description: No Content
+      summary: Mark messages as read
+      tags:
+      - chat
   /chat/conversation/{withID}:
     get:
       description: Fetch all messages between the current user and another user.
@@ -809,6 +910,57 @@ paths:
               $ref: '#/definitions/domain.Conversation'
             type: array
       summary: List all conversations
+      tags:
+      - chat
+  /chat/messages/bulk-delete:
+    post:
+      description: Permantently delete multiple messages. Admin or sender only.
+      parameters:
+      - description: Message IDs
+        in: body
+        name: ids
+        required: true
+        schema:
+          items:
+            type: integer
+          type: array
+      responses:
+        "204":
+          description: No Content
+      summary: Delete multiple messages
+      tags:
+      - chat
+  /chat/unread-count:
+    get:
+      description: Get the total number of unread messages for the authenticated user
+        across all conversations.
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+      summary: Get total unread messages count
+      tags:
+      - chat
+  /chat/users/search:
+    get:
+      description: Find any user by name or ID to start a conversation.
+      parameters:
+      - description: Search Query
+        in: query
+        name: q
+        required: true
+        type: string
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domain.User'
+            type: array
+      summary: Search users for chat
       tags:
       - chat
   /chat/ws:
@@ -1272,6 +1424,26 @@ paths:
       security:
       - BearerAuth: []
       summary: Delete a user account
+      tags:
+      - admin
+    get:
+      description: Retrieve profile details of any user (admin/moderator only).
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domain.User'
+      security:
+      - BearerAuth: []
+      summary: Get any user profile by ID
       tags:
       - admin
   /users/{id}/role:
