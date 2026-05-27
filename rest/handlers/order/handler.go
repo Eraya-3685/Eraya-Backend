@@ -227,8 +227,9 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 
 	// Broadcast real-time order event to connected admins
 	broadcastToAdmins(map[string]any{
-		"type":    "NEW_ORDER",
-		"message": "A customer placed a new order!",
+		"type":     "NEW_ORDER",
+		"message":  fmt.Sprintf("A customer placed a new order! Order ID: #%d", order.ID),
+		"order_id": order.ID,
 	})
 }
 
@@ -410,8 +411,9 @@ func (h *Handler) AdminConfirmOrder(w http.ResponseWriter, r *http.Request) {
 
 	// Broadcast confirmed order event to connected admins
 	broadcastToAdmins(map[string]any{
-		"type":    "ORDER_CONFIRMED",
-		"message": fmt.Sprintf("Order #%d confirmed!", orderID),
+		"type":     "ORDER_CONFIRMED",
+		"message":  fmt.Sprintf("Order #%d confirmed!", orderID),
+		"order_id": orderID,
 	})
 }
 
@@ -450,8 +452,9 @@ func (h *Handler) AdminDeleteOrder(w http.ResponseWriter, r *http.Request) {
 
 	// Broadcast deleted order event to connected admins
 	broadcastToAdmins(map[string]any{
-		"type":    "ORDER_DELETED",
-		"message": fmt.Sprintf("Order #%d deleted!", orderID),
+		"type":     "ORDER_DELETED",
+		"message":  fmt.Sprintf("Order #%d deleted!", orderID),
+		"order_id": orderID,
 	})
 }
 
@@ -514,8 +517,9 @@ func (h *Handler) AdminUpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	// Broadcast status updated event to connected admins
 	broadcastToAdmins(map[string]any{
-		"type":    "ORDER_STATUS_UPDATED",
-		"message": fmt.Sprintf("Order #%d status updated to %s", orderID, req.Status),
+		"type":     "ORDER_STATUS_UPDATED",
+		"message":  fmt.Sprintf("Order #%d status updated to %s", orderID, req.Status),
+		"order_id": orderID,
 	})
 }
 
