@@ -254,15 +254,14 @@ func (s *service) UpdateMessage(ctx context.Context, userID, msgID int64, newTex
 	return msg, nil
 }
 
-func (s *service) DeleteMessage(ctx context.Context, userID, msgID int64) error {
+func (s *service) DeleteMessage(ctx context.Context, userID int64, msgID int64) error {
 	msg, err := s.repo.GetMessageByID(ctx, msgID)
 	if err != nil {
 		return err
 	}
 
-	// Auth: Sender can delete own message; admin/moderator can delete any message
-	role, _ := s.repo.GetUserRole(ctx, userID)
-	if msg.SenderID != userID && role != "admin" && role != "moderator" {
+	// Auth: Only sender can delete their own message
+	if msg.SenderID != userID {
 		return fmt.Errorf("unauthorized to delete this message")
 	}
 
@@ -311,17 +310,13 @@ func (s *service) IsAdmin(ctx context.Context, userID int64) (string, error) {
 }
 
 func (s *service) DeleteMessages(ctx context.Context, userID int64, msgIDs []int64) error {
-	// Fetch role once outside loop for efficiency
-	role, _ := s.repo.GetUserRole(ctx, userID)
-	isAdminUser := role == "admin" || role == "moderator"
-
 	for _, id := range msgIDs {
 		msg, err := s.repo.GetMessageByID(ctx, id)
 		if err != nil {
 			continue
 		}
 
-		if msg.SenderID != userID && !isAdminUser {
+		if msg.SenderID != userID {
 			continue
 		}
 

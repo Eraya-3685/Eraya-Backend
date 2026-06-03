@@ -9,16 +9,18 @@ import (
 )
 
 type service struct {
-	repo    ProductRepo
-	cache   ProductCache
-	storage *storage.StorageService
+	repo          ProductRepo
+	cache         ProductCache
+	categoryCache CategoryCache
+	storage       *storage.StorageService
 }
 
-func NewService(repo ProductRepo, cache ProductCache, storage *storage.StorageService) Service {
+func NewService(repo ProductRepo, cache ProductCache, catCache CategoryCache, storage *storage.StorageService) Service {
 	return &service{
-		repo:    repo,
-		cache:   cache,
-		storage: storage,
+		repo:          repo,
+		cache:         cache,
+		categoryCache: catCache,
+		storage:       storage,
 	}
 }
 
@@ -120,15 +122,27 @@ func (s *service) IncrementStock(ctx context.Context, id int64, quantity int) er
 }
 
 func (s *service) CreateCategory(ctx context.Context, c *domain.Category) (*domain.Category, error) {
-	return s.repo.CreateCategory(ctx, c)
+	result, err := s.repo.CreateCategory(ctx, c)
+	if err == nil {
+		go s.categoryCache.InvalidateCategories(context.Background())
+	}
+	return result, err
 }
 
 func (s *service) ListCategories(ctx context.Context) ([]*domain.Category, error) {
-	return s.repo.ListCategories(ctx)
+	// Try cache first
+	if cats, err := s.categoryCache.GetCategories(ctx); err == nil {
+		return cats, nil
+	}
+	// Fallback to DB
+	cats, err := s.repo.ListCategories(ctx)
+	if err == nil {
+		go s.categoryCache.SetCategories(context.Background(), cats)
+	}
+	return cats, err
 }
 
 func (s *service) UpdateCategory(ctx context.Context, category *domain.Category) (*domain.Category, error) {
-	// Fetch old category to check for image change
 	oldCatList, _ := s.repo.ListCategories(ctx)
 	var oldImg string
 	for _, c := range oldCatList {
@@ -141,13 +155,16 @@ func (s *service) UpdateCategory(ctx context.Context, category *domain.Category)
 	}
 
 	updated, err := s.repo.UpdateCategory(ctx, category)
-	if err == nil && oldImg != "" {
-		newImg := ""
-		if category.ImageURL != nil {
-			newImg = *category.ImageURL
-		}
-		if oldImg != newImg {
-			go s.storage.DeleteFile(oldImg)
+	if err == nil {
+		go s.categoryCache.InvalidateCategories(context.Background())
+		if oldImg != "" {
+			newImg := ""
+			if category.ImageURL != nil {
+				newImg = *category.ImageURL
+			}
+			if oldImg != newImg {
+				go s.storage.DeleteFile(oldImg)
+			}
 		}
 	}
 	return updated, err
@@ -155,8 +172,11 @@ func (s *service) UpdateCategory(ctx context.Context, category *domain.Category)
 
 func (s *service) DeleteCategory(ctx context.Context, id int) error {
 	imageURL, err := s.repo.DeleteCategory(ctx, id)
-	if err == nil && imageURL != "" {
-		go s.storage.DeleteFile(imageURL)
+	if err == nil {
+		go s.categoryCache.InvalidateCategories(context.Background())
+		if imageURL != "" {
+			go s.storage.DeleteFile(imageURL)
+		}
 	}
 	return err
 }
@@ -164,6 +184,7 @@ func (s *service) DeleteCategory(ctx context.Context, id int) error {
 func (s *service) BulkDeleteCategories(ctx context.Context, ids []int) error {
 	imageURLs, err := s.repo.BulkDeleteCategories(ctx, ids)
 	if err == nil {
+		go s.categoryCache.InvalidateCategories(context.Background())
 		for _, url := range imageURLs {
 			if url != "" {
 				go s.storage.DeleteFile(url)

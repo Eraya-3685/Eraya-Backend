@@ -48,3 +48,9 @@ type ProductCache interface {
 	GetLatestProducts(ctx context.Context) ([]*domain.Product, error)
 	SetLatestProducts(ctx context.Context, products []*domain.Product) error
 }
+
+type CategoryCache interface {
+	GetCategories(ctx context.Context) ([]*domain.Category, error)
+	SetCategories(ctx context.Context, cats []*domain.Category) error
+	InvalidateCategories(ctx context.Context)
+}

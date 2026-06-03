@@ -79,14 +79,15 @@ func Serve() {
 
 	productRepo := repo.NewProductRepo(dbCon)
 	productCache := repo.NewProductCache(redisDB)
-	productService := product.NewService(productRepo, productCache, storageService)
+	categoryCache := repo.NewCategoryCache(redisDB)
+	productService := product.NewService(productRepo, productCache, categoryCache, storageService)
 	productHandler := product_handler.NewHandler(productService, storageService)
 
 	cartRepo := repo.NewCartRepo(dbCon)
 	orderRepo := repo.NewOrderRepo(dbCon)
-	settingsRepo := repo.NewSettingsRepo(dbCon)
+	settingsRepo := repo.NewSettingsRepo(dbCon, redisDB)
 	settingsService := settings.NewService(settingsRepo)
-	settingsHandler := settings_handler.NewHandler(settingsService)
+	settingsHandler := settings_handler.NewHandler(settingsService, storageService)
 
 	bkashClient := bkash.NewClient(cnf.BKash)
 

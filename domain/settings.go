@@ -10,6 +10,7 @@ type StoreSettings struct {
 	StoreEmail            string  `json:"store_email" db:"store_email"`
 	StorePhone            string  `json:"store_phone" db:"store_phone"`
 	StoreAddress          string  `json:"store_address" db:"store_address"`
+	LogoURL               string  `json:"logo_url" db:"logo_url"`
 }
 
 type SettingsRepo interface {
