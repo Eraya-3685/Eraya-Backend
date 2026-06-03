@@ -23,6 +23,7 @@ type Message struct {
 	SenderID       int64     `json:"sender_id" db:"sender_id"`
 	SenderName     string    `json:"sender_name" db:"sender_name"`
 	SenderAvatar   *string   `json:"sender_avatar" db:"sender_avatar"`
+	SenderRole     string    `json:"sender_role" db:"sender_role"`
 	ReceiverID     int64     `json:"receiver_id" db:"-"`
 	MessageText    *string   `json:"message_text" db:"message_text"`
 	AttachmentURL  *string   `json:"attachment_url" db:"attachment_url"`

@@ -159,13 +159,14 @@ func (r *chatRepo) SaveMessage(ctx context.Context, msg *domain.Message) (*domai
 
 	msg.SenderName = sender.FullName
 	msg.SenderAvatar = sender.AvatarURL
+	msg.SenderRole = sender.Role
 
 	return msg, nil
 }
 
 func (r *chatRepo) GetMessages(ctx context.Context, convID int64) ([]*domain.Message, error) {
 	query := `
-		SELECT m.*, u.full_name as sender_name, u.avatar_url as sender_avatar, rm.message_text as reply_to_text
+		SELECT m.*, u.full_name as sender_name, u.avatar_url as sender_avatar, u.role as sender_role, rm.message_text as reply_to_text
 		FROM messages m 
 		JOIN users u ON m.sender_id = u.id 
 		LEFT JOIN messages rm ON m.reply_to_id = rm.id
@@ -235,7 +236,7 @@ func (r *chatRepo) HasPermission(ctx context.Context, userID int64, permission s
 func (r *chatRepo) GetMessageByID(ctx context.Context, msgID int64) (*domain.Message, error) {
 	var msg domain.Message
 	query := `
-		SELECT m.*, u.full_name as sender_name, u.avatar_url as sender_avatar, rm.message_text as reply_to_text
+		SELECT m.*, u.full_name as sender_name, u.avatar_url as sender_avatar, u.role as sender_role, rm.message_text as reply_to_text
 		FROM messages m 
 		JOIN users u ON m.sender_id = u.id 
 		LEFT JOIN messages rm ON m.reply_to_id = rm.id
