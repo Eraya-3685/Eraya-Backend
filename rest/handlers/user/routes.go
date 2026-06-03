@@ -23,6 +23,7 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string) {
 		r.With(middleware.AuthMiddleware(jwtSecret, h.svc)).Post("/otp/request", h.RequestOTP)
 		r.With(middleware.AuthMiddleware(jwtSecret, h.svc)).Post("/otp/verify", h.VerifyOTPOnly)
 		r.With(middleware.AuthMiddleware(jwtSecret, h.svc)).Patch("/secure-update", h.SecureUpdate)
+		r.With(middleware.AuthMiddleware(jwtSecret, h.svc)).Post("/change-password", h.ChangePassword)
 
 		// Admin / Moderators with 'users' permission
 		r.With(

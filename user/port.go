@@ -15,6 +15,7 @@ type Service interface {
 	UpdateRole(ctx context.Context, userID int64, role string) error
 	SocialLogin(ctx context.Context, user *domain.User) (string, *domain.User, error)
 	UpdatePassword(ctx context.Context, userID int64, password string) error
+	ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error
 	RequestOTP(ctx context.Context, userID int64, purpose string) error
 	VerifyOTP(ctx context.Context, userID int64, purpose string, code string) (bool, error)
 	CheckOTP(ctx context.Context, userID int64, purpose string, code string) (bool, error)

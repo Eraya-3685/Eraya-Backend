@@ -46,6 +46,7 @@ func (r *userRepo) Create(ctx context.Context, u *domain.User) (*domain.User, er
 		}
 	}
 
+	u.HasPassword = u.PasswordHash != ""
 	return u, tx.Commit()
 }
 
@@ -67,6 +68,7 @@ func (r *userRepo) FindByEmail(ctx context.Context, email string) (*domain.User,
 		return nil, err
 	}
 	u.Permissions = perms
+	u.HasPassword = u.PasswordHash != ""
 
 	return &u, nil
 }
@@ -89,6 +91,7 @@ func (r *userRepo) FindByEmailOrPhone(ctx context.Context, identifier string) (*
 		return nil, err
 	}
 	u.Permissions = perms
+	u.HasPassword = u.PasswordHash != ""
 
 	return &u, nil
 }
@@ -111,6 +114,7 @@ func (r *userRepo) FindByID(ctx context.Context, id int64) (*domain.User, error)
 		return nil, err
 	}
 	u.Permissions = perms
+	u.HasPassword = u.PasswordHash != ""
 
 	return &u, nil
 }
@@ -133,6 +137,7 @@ func (r *userRepo) FindBySocialID(ctx context.Context, socialID string) (*domain
 		return nil, err
 	}
 	u.Permissions = perms
+	u.HasPassword = u.PasswordHash != ""
 
 	return &u, nil
 }

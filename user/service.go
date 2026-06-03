@@ -544,11 +544,39 @@ func (s *service) BulkUpdateRole(ctx context.Context, adminID int64, userIDs []i
 		return errors.New("invalid administrative password")
 	}
 
+	// 2.5 OTP Security Check for promoting to admin or demoting from admin
+	otpRequired := false
+	if role == "admin" {
+		otpRequired = true
+	} else {
+		for _, targetID := range userIDs {
+			targetUser, err := s.repo.FindByID(ctx, targetID)
+			if err == nil && targetUser != nil && targetUser.Role == "admin" {
+				otpRequired = true
+				break
+			}
+		}
+	}
+
+	if otpRequired {
+		if otp == "" {
+			return errors.New("OTP verification is required for promoting to or demoting from admin")
+		}
+		valid, err := s.VerifyOTP(ctx, adminID, "admin_role_change", otp)
+		if err != nil {
+			return errors.New("failed to verify OTP")
+		}
+		if !valid {
+			return errors.New("invalid or expired OTP")
+		}
+	}
+
 	// Adjust permissions based on role
 	finalPermissions := permissions
-	if role == "admin" {
+	switch role {
+	case "admin":
 		finalPermissions = []string{"dashboard", "products", "categories", "orders", "users", "settings"}
-	} else if role == "buyer" {
+	case "buyer":
 		finalPermissions = []string{}
 	}
 
@@ -567,6 +595,42 @@ func (s *service) BulkUpdateRole(ctx context.Context, adminID int64, userIDs []i
 
 	return nil
 }
+
+func (s *service) ChangePassword(ctx context.Context, userID int64, currentPassword, newPassword string) error {
+	user, err := s.repo.FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return errors.New("user not found")
+	}
+
+	if user.PasswordHash != "" {
+		if currentPassword == "" {
+			return errors.New("current password is required")
+		}
+		if !util.CheckPasswordHash(currentPassword, user.PasswordHash) {
+			return errors.New("invalid current password")
+		}
+	}
+
+	if len(newPassword) < 6 {
+		return errors.New("password must be at least 6 characters long")
+	}
+
+	if user.PasswordHash != "" && util.CheckPasswordHash(newPassword, user.PasswordHash) {
+		return errors.New("new password cannot be the same as the current password")
+	}
+
+	hash, err := util.HashPassword(newPassword)
+	if err != nil {
+		return err
+	}
+
+	err = s.repo.UpdatePassword(ctx, userID, hash)
+	if err == nil {
+		s.redis.Del(ctx, fmt.Sprintf("user:profile:%d", userID))
+	}
+	return err
+}
+
 func (s *service) ActivateUser(ctx context.Context, userID int64) error {
 	err := s.repo.UpdateStatus(ctx, userID, true)
 	if err == nil {

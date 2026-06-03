@@ -15,6 +15,7 @@ type User struct {
 	Address      *string   `json:"address" db:"address"`
 	AvatarURL    *string   `json:"avatar_url" db:"avatar_url"`
 	Permissions  []string  `json:"permissions" db:"-"`
+	HasPassword  bool      `json:"has_password" db:"-"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	IsActive     bool      `json:"is_active" db:"is_active"`
 }
