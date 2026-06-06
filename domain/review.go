@@ -11,6 +11,7 @@ type Review struct {
 	CreatedAt  time.Time `json:"created_at" db:"created_at"`
 	IsVerified bool      `json:"is_verified" db:"is_verified"`
 	IsApproved bool      `json:"is_approved" db:"is_approved"`
+	ImageURL   *string   `json:"image_url" db:"image_url"`
 
 	User *User `json:"user,omitempty" db:"user"`
 }

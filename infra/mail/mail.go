@@ -9,7 +9,7 @@ import (
 )
 
 type Mailer interface {
-	SendOTP(to string, otp string) error
+	SendOTP(to string, otp string, purpose string) error
 	SendOrderStatusUpdate(order *domain.Order, status string, estimatedDate string) error
 }
 
@@ -25,7 +25,23 @@ func NewMailer(cnf config.SMTPConfig, frontendURL string) Mailer {
 	return &smtpMailer{config: cnf, frontendURL: frontendURL}
 }
 
-func (m *smtpMailer) SendOTP(to string, otp string) error {
+func (m *smtpMailer) SendOTP(to string, otp string, purpose string) error {
+	reason := "to authorize a secure action on your Eraya account"
+	switch purpose {
+	case "verify_signup":
+		reason = "to verify your email address and activate your Eraya account"
+	case "reset":
+		reason = "to reset the password of your Eraya account"
+	case "password":
+		reason = "to authorize changing your account security credentials"
+	case "email":
+		reason = "to authorize changing your primary account email address"
+	case "phone":
+		reason = "to authorize updating your account phone number"
+	case "admin_role_change":
+		reason = "to verify administrative action for user role updates"
+	}
+
 	subject := "Subject: Eraya | Security Verification Code\n"
 	mime := "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
 	body := fmt.Sprintf(`
@@ -37,9 +53,9 @@ func (m *smtpMailer) SendOTP(to string, otp string) error {
 			</div>
 
 			<div style="text-align: center; margin-bottom: 30px;">
-				<h2 style="color: #0f172a; font-size: 20px; font-weight: 800; margin-bottom: 10px;">Verify Your Account</h2>
+				<h2 style="color: #0f172a; font-size: 20px; font-weight: 800; margin-bottom: 10px;">Security Verification</h2>
 				<p style="color: #475569; font-size: 14.5px; line-height: 1.6; margin: 0 auto; max-width: 420px;">
-					Please use the 6-digit verification code below to authorize your secure login or action on Eraya.
+					Please use the 6-digit verification code below %s.
 				</p>
 			</div>
 			
@@ -59,7 +75,7 @@ func (m *smtpMailer) SendOTP(to string, otp string) error {
 				Dhaka, Bangladesh | Support: 09678-ERAYA
 			</p>
 		</div>
-	`, otp)
+	`, reason, otp)
 
 	fromHeader := fmt.Sprintf("From: Eraya Support <%s>\n", m.config.User)
 	msg := []byte(fromHeader + subject + mime + body)
@@ -94,7 +110,7 @@ func (m *smtpMailer) SendOrderStatusUpdate(order *domain.Order, status string, e
 	case "Delivered":
 		statusColor = "#16a34a" // Green
 		statusBg = "#f0fdf4"
-		statusDesc = "Excellent! Your order has been successfully delivered. Enjoy your purchase!"
+		statusDesc = "Excellent! Your order has been successfully delivered. Enjoy your purchase! Please take a moment to share your feedback and write a review for your items."
 	case "Cancelled":
 		statusColor = "#dc2626" // Red
 		statusBg = "#fef2f2"
@@ -117,17 +133,29 @@ func (m *smtpMailer) SendOrderStatusUpdate(order *domain.Order, status string, e
 		if item.Product != nil {
 			pName = item.Product.Name
 		}
+		var variantDetails []string
+		if item.SelectedColor != "" {
+			variantDetails = append(variantDetails, "Color: "+item.SelectedColor)
+		}
+		if item.SelectedSize != "" {
+			variantDetails = append(variantDetails, "Size: "+item.SelectedSize)
+		}
+		variantStr := ""
+		if len(variantDetails) > 0 {
+			variantStr = fmt.Sprintf(`<p style="margin: 4px 0 0 0; font-size: 11.5px; color: #64748b;">%s</p>`, strings.Join(variantDetails, " | "))
+		}
 		row := fmt.Sprintf(`
 			<tr style="border-bottom: 1px solid #f1f5f9;">
 				<td style="padding: 16px 0; text-align: left; vertical-align: middle;">
 					<p style="margin: 0; font-size: 13.5px; font-weight: 700; color: #0f172a;">%s</p>
+					%s
 					<p style="margin: 4px 0 0 0; font-size: 11.5px; font-weight: 600; color: #64748b;">Qty: %d</p>
 				</td>
 				<td style="padding: 16px 0; text-align: right; vertical-align: middle; font-size: 13.5px; font-weight: 800; color: #0f172a;">
 					৳%.0f
 				</td>
 			</tr>
-		`, pName, item.Quantity, item.PriceAtPurchase*float64(item.Quantity))
+		`, pName, variantStr, item.Quantity, item.PriceAtPurchase*float64(item.Quantity))
 		itemRows = append(itemRows, row)
 	}
 
@@ -137,6 +165,10 @@ func (m *smtpMailer) SendOrderStatusUpdate(order *domain.Order, status string, e
 	}
 
 	trackingLink := m.frontendURL + "/profile"
+	buttonText := "Live Tracking Details"
+	if status == "Delivered" {
+		buttonText = "Write a Product Review"
+	}
 
 	body := fmt.Sprintf(`
 		<div style="font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif; max-width: 550px; margin: 40px auto; padding: 40px; border: 1px solid #e2e8f0; border-radius: 24px; background: #ffffff; box-shadow: 0 10px 30px rgba(0, 0, 0, 0.02);">
@@ -192,7 +224,7 @@ func (m *smtpMailer) SendOrderStatusUpdate(order *domain.Order, status string, e
 			</div>
 
 			<div style="text-align: center; margin-top: 30px;">
-				<a href="%s" style="display: inline-block; padding: 16px 32px; background: #0f172a; color: #ffffff; text-decoration: none; border-radius: 14px; font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);">Live Tracking Details</a>
+				<a href="%s" style="display: inline-block; padding: 16px 32px; background: #0f172a; color: #ffffff; text-decoration: none; border-radius: 14px; font-size: 12px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase; box-shadow: 0 8px 24px rgba(15, 23, 42, 0.15);">%s</a>
 			</div>
 			
 			<hr style="border: none; border-top: 1px solid #f1f5f9; margin: 35px 0;">
@@ -201,7 +233,7 @@ func (m *smtpMailer) SendOrderStatusUpdate(order *domain.Order, status string, e
 				Premium Artisanal Goods | Dhaka, Bangladesh | Support: 09678-ERAYA
 			</p>
 		</div>
-	`, statusBg, statusColor, displayStatus, order.User.FullName, statusDesc, order.ID, order.CreatedAt.Format("02 Jan 2006"), strings.Join(itemRows, ""), order.TotalPrice, estHtml, trackingLink)
+	`, statusBg, statusColor, displayStatus, order.User.FullName, statusDesc, order.ID, order.CreatedAt.Format("02 Jan 2006"), strings.Join(itemRows, ""), order.TotalPrice, estHtml, trackingLink, buttonText)
 
 	fromHeader := fmt.Sprintf("From: Eraya Support <%s>\n", m.config.User)
 	msg := []byte(fromHeader + subject + mime + body)
@@ -213,7 +245,7 @@ func (m *smtpMailer) SendOrderStatusUpdate(order *domain.Order, status string, e
 
 type mockMailer struct{}
 
-func (m *mockMailer) SendOTP(to string, otp string) error {
+func (m *mockMailer) SendOTP(to string, otp string, purpose string) error {
 	return nil
 }
 

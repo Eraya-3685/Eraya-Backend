@@ -397,10 +397,10 @@ func (s *service) RequestOTP(ctx context.Context, userID int64, purpose string) 
 	}
 
 	key := fmt.Sprintf("otp:%s:%d", purpose, userID)
-	return s.sendAndStoreOTP(ctx, user.Email, key, 10*time.Minute)
+	return s.sendAndStoreOTP(ctx, user.Email, key, 10*time.Minute, purpose)
 }
 
-func (s *service) sendAndStoreOTP(ctx context.Context, email string, key string, ttl time.Duration) error {
+func (s *service) sendAndStoreOTP(ctx context.Context, email string, key string, ttl time.Duration, purpose string) error {
 	otp, err := generateRandomOTP(6)
 	if err != nil {
 		return err
@@ -410,7 +410,7 @@ func (s *service) sendAndStoreOTP(ctx context.Context, email string, key string,
 		return fmt.Errorf("failed to store otp: %w", err)
 	}
 
-	return s.mailer.SendOTP(email, otp)
+	return s.mailer.SendOTP(email, otp, purpose)
 }
 
 func (s *service) VerifyOTP(ctx context.Context, userID int64, purpose string, code string) (bool, error) {
@@ -464,7 +464,7 @@ func (s *service) ForgotPassword(ctx context.Context, email string) error {
 	}
 
 	key := fmt.Sprintf("otp:reset:%s", email)
-	return s.sendAndStoreOTP(ctx, user.Email, key, 15*time.Minute)
+	return s.sendAndStoreOTP(ctx, user.Email, key, 15*time.Minute, "reset")
 }
 
 func (s *service) ResetPassword(ctx context.Context, email string, code string, newPassword string) (string, *domain.User, error) {

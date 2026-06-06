@@ -27,9 +27,10 @@ type service struct {
 	mailer      mail.Mailer
 	userSvc     user.Service
 	chatSvc     chat.Service
+	couponSvc   domain.CouponService
 }
 
-func NewService(cartRepo domain.CartRepo, orderRepo domain.OrderRepo, productSvc product.Service, settingsSvc settings.Service, mailer mail.Mailer, userSvc user.Service, chatSvc chat.Service) Service {
+func NewService(cartRepo domain.CartRepo, orderRepo domain.OrderRepo, productSvc product.Service, settingsSvc settings.Service, mailer mail.Mailer, userSvc user.Service, chatSvc chat.Service, couponSvc domain.CouponService) Service {
 	return &service{
 		cartRepo:    cartRepo,
 		orderRepo:   orderRepo,
@@ -38,14 +39,17 @@ func NewService(cartRepo domain.CartRepo, orderRepo domain.OrderRepo, productSvc
 		mailer:      mailer,
 		userSvc:     userSvc,
 		chatSvc:     chatSvc,
+		couponSvc:   couponSvc,
 	}
 }
 
-func (s *service) AddToCart(ctx context.Context, userID, productID int64, quantity int) error {
+func (s *service) AddToCart(ctx context.Context, userID, productID int64, quantity int, selectedColor, selectedSize string) error {
 	item := &domain.CartItem{
-		UserID:    userID,
-		ProductID: productID,
-		Quantity:  quantity,
+		UserID:        userID,
+		ProductID:     productID,
+		Quantity:      quantity,
+		SelectedColor: selectedColor,
+		SelectedSize:  selectedSize,
 	}
 	return s.cartRepo.Add(ctx, item)
 }
@@ -54,7 +58,7 @@ func (s *service) GetCart(ctx context.Context, userID int64) ([]*domain.CartItem
 	return s.cartRepo.List(ctx, userID)
 }
 
-func (s *service) Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string, trxID, senderNumber *string, paidAmount *float64) (*domain.Order, error) {
+func (s *service) Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string, trxID, senderNumber *string, paidAmount *float64, couponCode *string) (*domain.Order, error) {
 	if len(items) == 0 {
 		return nil, errors.New("order must have items")
 	}
@@ -90,6 +94,8 @@ func (s *service) Checkout(ctx context.Context, userID int64, items []domain.Car
 				ProductID:       item.ProductID,
 				Quantity:        item.Quantity,
 				PriceAtPurchase: price,
+				SelectedColor:   item.SelectedColor,
+				SelectedSize:    item.SelectedSize,
 			})
 			mu.Unlock()
 			return nil
@@ -111,13 +117,27 @@ func (s *service) Checkout(ctx context.Context, userID int64, items []domain.Car
 		}
 	}
 
+	var discountAmount float64
+	var appliedCouponCode *string
+	if couponCode != nil && *couponCode != "" {
+		c, disc, err := s.couponSvc.ValidateAndApplyCoupon(ctx, *couponCode, total)
+		if err != nil {
+			return nil, err
+		}
+		discountAmount = disc
+		appliedCouponCode = &c.Code
+	}
+
 	shippingFee := st.StandardDeliveryFee
 	if total >= st.FreeShippingThreshold {
 		shippingFee = 0
 	}
 
 	tax := total * (st.TaxPercentage / 100)
-	grandTotal := total + shippingFee + tax
+	grandTotal := total + shippingFee + tax - discountAmount
+	if grandTotal < 0 {
+		grandTotal = 0
+	}
 
 	order := &domain.Order{
 		ID:              1000000000 + rand.Int63n(9000000000),
@@ -130,6 +150,8 @@ func (s *service) Checkout(ctx context.Context, userID int64, items []domain.Car
 		TrxID:           trxID,
 		SenderNumber:    senderNumber,
 		PaidAmount:      paidAmount,
+		CouponCode:      appliedCouponCode,
+		DiscountAmount:  discountAmount,
 	}
 
 	createdOrder, err := s.orderRepo.Create(ctx, order, orderItems)
@@ -285,6 +307,8 @@ func (s *service) AdminGetDashboardStats(ctx context.Context, adminID int64, tim
 		totalCount int64
 		convs      []*domain.Conversation
 		users      []*domain.User
+		catSales   []domain.CategorySales
+		lowStock   []domain.Product
 	)
 
 	g, gCtx := errgroup.WithContext(ctx)
@@ -326,11 +350,31 @@ func (s *service) AdminGetDashboardStats(ctx context.Context, adminID int64, tim
 		return nil
 	})
 
+	g.Go(func() error {
+		var err error
+		catSales, err = s.orderRepo.GetCategorySales(gCtx)
+		if err != nil {
+			slog.Warn("Failed to fetch category sales for dashboard", "error", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		var err error
+		lowStock, err = s.orderRepo.GetLowStockProducts(gCtx)
+		if err != nil {
+			slog.Warn("Failed to fetch low stock products for dashboard", "error", err)
+		}
+		return nil
+	})
+
 	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
 	stats.TotalProducts = int(totalCount)
+	stats.CategorySales = catSales
+	stats.LowStockAlerts = lowStock
 
 	// Normalize timeframe
 	timeframe = strings.ToLower(timeframe)

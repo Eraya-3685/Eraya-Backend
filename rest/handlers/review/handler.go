@@ -2,6 +2,7 @@ package review
 
 import (
 	"encoding/json"
+	"eraya/infra/storage"
 	"eraya/review"
 	"log/slog"
 	"net/http"
@@ -11,19 +12,22 @@ import (
 )
 
 type Handler struct {
-	svc review.Service
+	svc     review.Service
+	storage *storage.StorageService
 }
 
-func NewHandler(svc review.Service) *Handler {
+func NewHandler(svc review.Service, storage *storage.StorageService) *Handler {
 	return &Handler{
-		svc: svc,
+		svc:     svc,
+		storage: storage,
 	}
 }
 
 type createReviewReq struct {
-	ProductID int64  `json:"product_id"`
-	Rating    int    `json:"rating"`
-	Comment   string `json:"comment"`
+	ProductID int64   `json:"product_id"`
+	Rating    int     `json:"rating"`
+	Comment   string  `json:"comment"`
+	ImageURL  *string `json:"image_url"`
 }
 
 // CreateReview godoc
@@ -52,7 +56,7 @@ func (h *Handler) CreateReview(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rev, err := h.svc.CreateReview(r.Context(), userID, req.ProductID, req.Rating, req.Comment)
+	rev, err := h.svc.CreateReview(r.Context(), userID, req.ProductID, req.Rating, req.Comment, req.ImageURL)
 	if err != nil {
 		slog.Error("Failed to create review", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -149,5 +153,30 @@ func (h *Handler) DeleteReview(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Review deleted successfully"))
+}
+
+func (h *Handler) UploadReviewImage(w http.ResponseWriter, r *http.Request) {
+	err := r.ParseMultipartForm(5 << 20) // 5MB
+	if err != nil {
+		http.Error(w, "failed to parse multipart form", http.StatusBadRequest)
+		return
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		http.Error(w, "image file is required", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	url, err := h.storage.UploadFile("reviews", header.Filename, file, header.Header.Get("Content-Type"))
+	if err != nil {
+		slog.Error("Review image upload failed", "error", err)
+		http.Error(w, "upload failed", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{"url": url})
 }
 

@@ -87,8 +87,10 @@ func (h *Handler) AdminWebSocket(w http.ResponseWriter, r *http.Request) {
 }
 
 type addToCartReq struct {
-	ProductID int64 `json:"product_id"`
-	Quantity  int   `json:"quantity"`
+	ProductID     int64  `json:"product_id"`
+	Quantity      int    `json:"quantity"`
+	SelectedColor string `json:"selected_color"`
+	SelectedSize  string `json:"selected_size"`
 }
 
 // AddToCart godoc
@@ -117,7 +119,7 @@ func (h *Handler) AddToCart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.svc.AddToCart(r.Context(), userID, req.ProductID, req.Quantity)
+	err := h.svc.AddToCart(r.Context(), userID, req.ProductID, req.Quantity, req.SelectedColor, req.SelectedSize)
 	if err != nil {
 		slog.Error("Failed to add to cart", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -157,8 +159,10 @@ func (h *Handler) GetCart(w http.ResponseWriter, r *http.Request) {
 }
 
 type checkoutItem struct {
-	ProductID int64 `json:"product_id"`
-	Quantity  int   `json:"quantity"`
+	ProductID     int64  `json:"product_id"`
+	Quantity      int    `json:"quantity"`
+	SelectedColor string `json:"selected_color"`
+	SelectedSize  string `json:"selected_size"`
 }
 
 type checkoutReq struct {
@@ -168,6 +172,7 @@ type checkoutReq struct {
 	TrxID           *string        `json:"trx_id"`
 	SenderNumber    *string        `json:"sender_number"`
 	PaidAmount      *float64       `json:"paid_amount"`
+	CouponCode      *string        `json:"coupon_code"`
 }
 
 // Checkout godoc
@@ -199,12 +204,14 @@ func (h *Handler) Checkout(w http.ResponseWriter, r *http.Request) {
 	items := make([]domain.CartItem, len(req.Items))
 	for i, it := range req.Items {
 		items[i] = domain.CartItem{
-			ProductID: it.ProductID,
-			Quantity:  it.Quantity,
+			ProductID:     it.ProductID,
+			Quantity:      it.Quantity,
+			SelectedColor: it.SelectedColor,
+			SelectedSize:  it.SelectedSize,
 		}
 	}
 
-	order, err := h.svc.Checkout(r.Context(), userID, items, req.PaymentMethod, req.ShippingAddress, req.TrxID, req.SenderNumber, req.PaidAmount)
+	order, err := h.svc.Checkout(r.Context(), userID, items, req.PaymentMethod, req.ShippingAddress, req.TrxID, req.SenderNumber, req.PaidAmount, req.CouponCode)
 	if err != nil {
 		slog.Error("Checkout failed", "error", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)

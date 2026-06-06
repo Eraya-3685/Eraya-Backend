@@ -18,7 +18,7 @@ func NewService(repo ReviewRepo, verifier OrderVerifier) Service {
 	}
 }
 
-func (s *service) CreateReview(ctx context.Context, userID, productID int64, rating int, comment string) (*domain.Review, error) {
+func (s *service) CreateReview(ctx context.Context, userID, productID int64, rating int, comment string, imageURL *string) (*domain.Review, error) {
 	if rating < 1 || rating > 5 {
 		return nil, errors.New("rating must be between 1 and 5")
 	}
@@ -39,6 +39,7 @@ func (s *service) CreateReview(ctx context.Context, userID, productID int64, rat
 		Comment:    &comment,
 		IsVerified: true,
 		IsApproved: false,
+		ImageURL:   imageURL,
 	}
 
 	return s.repo.Create(ctx, r)

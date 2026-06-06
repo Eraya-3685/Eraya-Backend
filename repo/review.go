@@ -19,11 +19,11 @@ func NewReviewRepo(db *sqlx.DB) review.ReviewRepo {
 
 func (r *reviewRepo) Create(ctx context.Context, rev *domain.Review) (*domain.Review, error) {
 	query := `
-		INSERT INTO reviews (product_id, user_id, rating, comment, is_verified, is_approved)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO reviews (product_id, user_id, rating, comment, is_verified, is_approved, image_url)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id, created_at
 	`
-	err := r.db.QueryRowContext(ctx, query, rev.ProductID, rev.UserID, rev.Rating, rev.Comment, rev.IsVerified, rev.IsApproved).
+	err := r.db.QueryRowContext(ctx, query, rev.ProductID, rev.UserID, rev.Rating, rev.Comment, rev.IsVerified, rev.IsApproved, rev.ImageURL).
 		Scan(&rev.ID, &rev.CreatedAt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create review: %w", err)
@@ -34,7 +34,7 @@ func (r *reviewRepo) Create(ctx context.Context, rev *domain.Review) (*domain.Re
 
 func (r *reviewRepo) ListByProduct(ctx context.Context, productID int64) ([]*domain.Review, error) {
 	query := `
-		SELECT r.id, r.user_id, r.product_id, r.rating, r.comment, r.created_at, r.is_verified, r.is_approved,
+		SELECT r.id, r.user_id, r.product_id, r.rating, r.comment, r.created_at, r.is_verified, r.is_approved, r.image_url,
 		       u.id, u.full_name
 		FROM reviews r
 		JOIN users u ON r.user_id = u.id
@@ -52,7 +52,7 @@ func (r *reviewRepo) ListByProduct(ctx context.Context, productID int64) ([]*dom
 		rev := &domain.Review{}
 		u := &domain.User{}
 		err := rows.Scan(
-			&rev.ID, &rev.UserID, &rev.ProductID, &rev.Rating, &rev.Comment, &rev.CreatedAt, &rev.IsVerified, &rev.IsApproved,
+			&rev.ID, &rev.UserID, &rev.ProductID, &rev.Rating, &rev.Comment, &rev.CreatedAt, &rev.IsVerified, &rev.IsApproved, &rev.ImageURL,
 			&u.ID, &u.FullName,
 		)
 		if err != nil {
@@ -66,7 +66,7 @@ func (r *reviewRepo) ListByProduct(ctx context.Context, productID int64) ([]*dom
 
 func (r *reviewRepo) ListAll(ctx context.Context) ([]*domain.Review, error) {
 	query := `
-		SELECT r.id, r.user_id, r.product_id, r.rating, r.comment, r.created_at, r.is_verified, r.is_approved,
+		SELECT r.id, r.user_id, r.product_id, r.rating, r.comment, r.created_at, r.is_verified, r.is_approved, r.image_url,
 		       u.id, u.full_name
 		FROM reviews r
 		JOIN users u ON r.user_id = u.id
@@ -83,7 +83,7 @@ func (r *reviewRepo) ListAll(ctx context.Context) ([]*domain.Review, error) {
 		rev := &domain.Review{}
 		u := &domain.User{}
 		err := rows.Scan(
-			&rev.ID, &rev.UserID, &rev.ProductID, &rev.Rating, &rev.Comment, &rev.CreatedAt, &rev.IsVerified, &rev.IsApproved,
+			&rev.ID, &rev.UserID, &rev.ProductID, &rev.Rating, &rev.Comment, &rev.CreatedAt, &rev.IsVerified, &rev.IsApproved, &rev.ImageURL,
 			&u.ID, &u.FullName,
 		)
 		if err != nil {

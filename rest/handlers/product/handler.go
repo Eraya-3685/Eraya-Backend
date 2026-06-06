@@ -73,11 +73,42 @@ func (h *Handler) CreateProduct(w http.ResponseWriter, r *http.Request) {
 	isActiveStr := r.FormValue("is_active")
 	isActive := isActiveStr != "false" // default true unless explicitly "false"
 
+	colorsStr := r.FormValue("colors")
+	var colors []string
+	if colorsStr != "" {
+		for _, c := range strings.Split(colorsStr, ",") {
+			cTrimmed := strings.TrimSpace(c)
+			if cTrimmed != "" {
+				colors = append(colors, cTrimmed)
+			}
+		}
+	}
+
+	sizesStr := r.FormValue("sizes")
+	var sizes []string
+	if sizesStr != "" {
+		for _, s := range strings.Split(sizesStr, ",") {
+			sTrimmed := strings.TrimSpace(s)
+			if sTrimmed != "" {
+				sizes = append(sizes, sTrimmed)
+			}
+		}
+	}
+
+	variationStockStr := r.FormValue("variation_stock")
+	var variationStock domain.VariationStockList
+	if variationStockStr != "" {
+		_ = json.Unmarshal([]byte(variationStockStr), &variationStock)
+	}
+
 	p := &domain.Product{
-		Name:       name,
-		BasePrice:  basePrice,
-		StockCount: stockCount,
-		IsActive:   isActive,
+		Name:           name,
+		BasePrice:      basePrice,
+		StockCount:     stockCount,
+		IsActive:       isActive,
+		Colors:         colors,
+		Sizes:          sizes,
+		VariationStock: variationStock,
 	}
 	if desc != "" {
 		p.Description = &desc

@@ -26,11 +26,11 @@ func (r *productRepo) Create(ctx context.Context, p *domain.Product) (*domain.Pr
 	}
 
 	query := `
-		INSERT INTO products (name, description, base_price, discount_price, discount_percentage, stock_count, slug, is_active)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		INSERT INTO products (name, description, base_price, discount_price, discount_percentage, stock_count, slug, is_active, colors, sizes, variation_stock)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb)
 		RETURNING id, created_at, sales_count, average_rating, total_reviews
 	`
-	err = tx.QueryRowContext(ctx, query, p.Name, p.Description, p.BasePrice, p.DiscountPrice, p.DiscountPercentage, p.StockCount, p.Slug, p.IsActive).
+	err = tx.QueryRowContext(ctx, query, p.Name, p.Description, p.BasePrice, p.DiscountPrice, p.DiscountPercentage, p.StockCount, p.Slug, p.IsActive, pq.Array(p.Colors), pq.Array(p.Sizes), p.VariationStock).
 		Scan(&p.ID, &p.CreatedAt, &p.SalesCount, &p.AverageRating, &p.TotalReviews)
 	if err != nil {
 		tx.Rollback()
@@ -325,15 +325,15 @@ func (r *productRepo) Update(ctx context.Context, p *domain.Product) ([]string, 
 	}
 	defer tx.Rollback()
 
-	// 1. Update main product info
 	query := `
 		UPDATE products 
 		SET name = $1, description = $2, base_price = $3, 
 		    discount_price = $4, discount_percentage = $5, 
-		    stock_count = $6, slug = $7, is_active = $8
-		WHERE id = $9
+		    stock_count = $6, slug = $7, is_active = $8,
+		    colors = $9, sizes = $10, variation_stock = $11::jsonb
+		WHERE id = $12
 	`
-	_, err = tx.ExecContext(ctx, query, p.Name, p.Description, p.BasePrice, p.DiscountPrice, p.DiscountPercentage, p.StockCount, p.Slug, p.IsActive, p.ID)
+	_, err = tx.ExecContext(ctx, query, p.Name, p.Description, p.BasePrice, p.DiscountPrice, p.DiscountPercentage, p.StockCount, p.Slug, p.IsActive, pq.Array(p.Colors), pq.Array(p.Sizes), p.VariationStock, p.ID)
 	if err != nil {
 		return nil, err
 	}

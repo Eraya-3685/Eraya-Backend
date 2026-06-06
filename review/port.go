@@ -6,7 +6,7 @@ import (
 )
 
 type Service interface {
-	CreateReview(ctx context.Context, userID, productID int64, rating int, comment string) (*domain.Review, error)
+	CreateReview(ctx context.Context, userID, productID int64, rating int, comment string, imageURL *string) (*domain.Review, error)
 	GetProductReviews(ctx context.Context, productID int64) ([]*domain.Review, error)
 	ListAllReviews(ctx context.Context) ([]*domain.Review, error)
 	ApproveReview(ctx context.Context, id int64) error

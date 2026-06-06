@@ -6,9 +6,9 @@ import (
 )
 
 type Service interface {
-	AddToCart(ctx context.Context, userID, productID int64, quantity int) error
+	AddToCart(ctx context.Context, userID, productID int64, quantity int, selectedColor, selectedSize string) error
 	GetCart(ctx context.Context, userID int64) ([]*domain.CartItem, error)
-	Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string, trxID, senderNumber *string, paidAmount *float64) (*domain.Order, error)
+	Checkout(ctx context.Context, userID int64, items []domain.CartItem, paymentMethod, shippingAddress string, trxID, senderNumber *string, paidAmount *float64, couponCode *string) (*domain.Order, error)
 	GetOrders(ctx context.Context, userID int64) ([]*domain.Order, error)
 	GetOrderByID(ctx context.Context, orderID, userID int64) (*domain.Order, error)
 	ConfirmPayment(ctx context.Context, orderID int64, trxID string, amount float64) error
