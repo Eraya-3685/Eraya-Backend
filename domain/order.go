@@ -95,7 +95,7 @@ type RecentContact struct {
 }
 
 type CategorySales struct {
-	CategoryName string  `json:"category_name"`
-	TotalSales   float64 `json:"total_sales"`
-	ProductCount int     `json:"product_count"`
+	CategoryName string  `json:"category_name" db:"category_name"`
+	TotalSales   float64 `json:"total_sales" db:"total_sales"`
+	ProductCount int     `json:"product_count" db:"product_count"`
 }
