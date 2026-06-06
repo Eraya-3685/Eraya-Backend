@@ -32,9 +32,9 @@ type Product struct {
 	AverageRating      float64        `json:"average_rating" db:"average_rating"`
 	TotalReviews       int            `json:"total_reviews" db:"total_reviews"`
 	ImageUrl           string         `json:"image_url,omitempty" db:"image_url"`
-	Colors             pq.StringArray     `json:"colors" db:"colors"`
-	Sizes              pq.StringArray     `json:"sizes" db:"sizes"`
-	VariationStock     VariationStockList `json:"variation_stock" db:"variation_stock"`
+	Colors             pq.StringArray     `json:"colors" db:"colors" swaggertype:"array,string"`
+	Sizes              pq.StringArray     `json:"sizes" db:"sizes" swaggertype:"array,string"`
+	VariationStock     VariationStockList `json:"variation_stock" db:"variation_stock" swaggertype:"string"`
 
 	CategoryIDs        []int          `json:"category_ids,omitempty" db:"-"`
 	Categories         []Category      `json:"categories,omitempty" db:"-"`
