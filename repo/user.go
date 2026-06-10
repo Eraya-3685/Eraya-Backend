@@ -199,16 +199,61 @@ func (r *userRepo) Delete(ctx context.Context, id int64) error {
 	return err
 }
 
-func (r *userRepo) ListAll(ctx context.Context) ([]*domain.User, error) {
-	query := `SELECT id, full_name, email, phone, social_id, role, address, avatar_url, is_active, created_at FROM users ORDER BY created_at DESC`
-	var users []*domain.User
-	err := r.db.SelectContext(ctx, &users, query)
+func (r *userRepo) ListAll(ctx context.Context, page, limit int64, search, role string) ([]*domain.User, int64, error) {
+	var whereClauses []string
+	var args []any
+
+	joinSQL := ""
+	selectFields := "u.id, u.full_name, u.email, u.phone, u.social_id, u.role, u.address, u.avatar_url, u.is_active, u.created_at"
+	groupBySQL := ""
+	orderBySQL := "u.created_at DESC"
+
+	if role == "recent" {
+		joinSQL = " JOIN orders o ON u.id = o.user_id"
+		whereClauses = append(whereClauses, "o.order_status IN ('Confirmed', 'Processing', 'Shipped', 'Delivered')")
+		selectFields += ", MAX(o.created_at) as last_order_at"
+		groupBySQL = " GROUP BY u.id, u.full_name, u.email, u.phone, u.social_id, u.role, u.address, u.avatar_url, u.is_active, u.created_at"
+		orderBySQL = "last_order_at DESC"
+	} else if role != "" && strings.ToLower(role) != "all" {
+		whereClauses = append(whereClauses, fmt.Sprintf("u.role = $%d", len(args)+1))
+		args = append(args, role)
+	}
+
+	if search != "" {
+		param := "%" + search + "%"
+		whereClauses = append(whereClauses, fmt.Sprintf("(u.full_name ILIKE $%d OR u.email ILIKE $%d OR u.phone ILIKE $%d OR u.id::text LIKE $%d)", len(args)+1, len(args)+2, len(args)+3, len(args)+4))
+		args = append(args, param, param, param, param)
+	}
+
+	whereSQL := ""
+	if len(whereClauses) > 0 {
+		whereSQL = " WHERE " + whereClauses[0]
+		for i := 1; i < len(whereClauses); i++ {
+			whereSQL += " AND " + whereClauses[i]
+		}
+	}
+
+	countQuery := "SELECT COUNT(DISTINCT u.id) FROM users u" + joinSQL + whereSQL
+	var count int64
+	err := r.db.GetContext(ctx, &count, countQuery, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
+	}
+
+	query := "SELECT DISTINCT " + selectFields + " FROM users u" + joinSQL + whereSQL + groupBySQL + " ORDER BY " + orderBySQL
+	if limit > 0 {
+		offset := (page - 1) * limit
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	}
+
+	var users []*domain.User
+	err = r.db.SelectContext(ctx, &users, query, args...)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	if len(users) == 0 {
-		return users, nil
+		return users, count, nil
 	}
 
 	// Fetch all permissions for these users
@@ -220,9 +265,9 @@ func (r *userRepo) ListAll(ctx context.Context) ([]*domain.User, error) {
 		u.Permissions = []string{} // Init
 	}
 
-	queryPerms, args, err := sqlx.In("SELECT user_id, permission FROM user_permissions WHERE user_id IN (?)", userIDs)
+	queryPerms, argsPerms, err := sqlx.In("SELECT user_id, permission FROM user_permissions WHERE user_id IN (?)", userIDs)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	queryPerms = r.db.Rebind(queryPerms)
 
@@ -231,18 +276,18 @@ func (r *userRepo) ListAll(ctx context.Context) ([]*domain.User, error) {
 		Permission string `db:"permission"`
 	}
 	var perms []userPerm
-	err = r.db.SelectContext(ctx, &perms, queryPerms, args...)
+	err = r.db.SelectContext(ctx, &perms, queryPerms, argsPerms...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
 	for _, p := range perms {
-		if u, ok := userMap[p.UserID]; ok {
+		if u, exists := userMap[p.UserID]; exists {
 			u.Permissions = append(u.Permissions, p.Permission)
 		}
 	}
 
-	return users, nil
+	return users, count, nil
 }
 
 func (r *userRepo) FindAdminsByIDs(ctx context.Context, ids []int64) ([]*domain.User, error) {

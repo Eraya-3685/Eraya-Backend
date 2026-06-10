@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"eraya/infra/storage"
 	"eraya/review"
+	"eraya/util"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -100,7 +101,32 @@ func (h *Handler) GetProductReviews(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {array} domain.Review
 // @Router /admin/reviews [get]
 func (h *Handler) ListAllReviews(w http.ResponseWriter, r *http.Request) {
-	reviews, err := h.svc.ListAllReviews(r.Context())
+	search := r.URL.Query().Get("search")
+	filter := r.URL.Query().Get("filter")
+
+	pageAsStr := r.URL.Query().Get("page")
+	if pageAsStr != "" {
+		page, _ := strconv.ParseInt(pageAsStr, 10, 64)
+		if page <= 0 {
+			page = 1
+		}
+		limitAsStr := r.URL.Query().Get("limit")
+		limit, _ := strconv.ParseInt(limitAsStr, 10, 64)
+		if limit <= 0 {
+			limit = 10
+		}
+
+		reviews, count, err := h.svc.ListAllReviews(r.Context(), page, limit, search, filter)
+		if err != nil {
+			slog.Error("Failed to list all reviews", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		util.SendPage(w, reviews, page, limit, count)
+		return
+	}
+
+	reviews, _, err := h.svc.ListAllReviews(r.Context(), 0, 0, search, filter)
 	if err != nil {
 		slog.Error("Failed to list all reviews", "error", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)

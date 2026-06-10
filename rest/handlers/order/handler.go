@@ -7,6 +7,7 @@ import (
 	"eraya/domain"
 	"eraya/infra/bkash"
 	"eraya/order"
+	"eraya/util"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -380,7 +381,34 @@ func (h *Handler) GetOrder(w http.ResponseWriter, r *http.Request) {
 // @Failure 403 {string} string "Forbidden"
 // @Router /admin/orders [get]
 func (h *Handler) AdminGetOrders(w http.ResponseWriter, r *http.Request) {
-	orders, err := h.svc.AdminGetAllOrders(r.Context())
+	search := r.URL.Query().Get("search")
+	status := r.URL.Query().Get("status")
+
+	pageAsStr := r.URL.Query().Get("page")
+	if pageAsStr != "" {
+		page, _ := strconv.ParseInt(pageAsStr, 10, 64)
+		if page <= 0 {
+			page = 1
+		}
+		limitAsStr := r.URL.Query().Get("limit")
+		limit, _ := strconv.ParseInt(limitAsStr, 10, 64)
+		if limit <= 0 {
+			limit = 10
+		}
+
+		orders, count, err := h.svc.AdminGetAllOrders(r.Context(), page, limit, search, status)
+		if err != nil {
+			if !errors.Is(err, context.Canceled) {
+				slog.Error("Admin failed to get orders", "error", err)
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		util.SendPage(w, orders, page, limit, count)
+		return
+	}
+
+	orders, _, err := h.svc.AdminGetAllOrders(r.Context(), 0, 0, search, status)
 	if err != nil {
 		if !errors.Is(err, context.Canceled) {
 			slog.Error("Admin failed to get orders", "error", err)

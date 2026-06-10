@@ -20,14 +20,14 @@ type CouponRepo interface {
 	Create(ctx context.Context, c *Coupon) (*Coupon, error)
 	FindByCode(ctx context.Context, code string) (*Coupon, error)
 	FindByID(ctx context.Context, id int64) (*Coupon, error)
-	List(ctx context.Context) ([]*Coupon, error)
+	List(ctx context.Context, page, limit int64, search string) ([]*Coupon, int64, error)
 	Delete(ctx context.Context, id int64) error
 }
 
 type CouponService interface {
 	CreateCoupon(ctx context.Context, code, discountType string, discountValue, minCartValue float64, expiresAt time.Time) (*Coupon, error)
 	GetCouponByCode(ctx context.Context, code string) (*Coupon, error)
-	ListCoupons(ctx context.Context) ([]*Coupon, error)
+	ListCoupons(ctx context.Context, page, limit int64, search string) ([]*Coupon, int64, error)
 	DeleteCoupon(ctx context.Context, id int64) error
 	ValidateAndApplyCoupon(ctx context.Context, code string, cartTotal float64) (*Coupon, float64, error)
 }

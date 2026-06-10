@@ -60,8 +60,8 @@ func (s *service) GetProductReviews(ctx context.Context, productID int64) ([]*do
 	return approved, nil
 }
 
-func (s *service) ListAllReviews(ctx context.Context) ([]*domain.Review, error) {
-	return s.repo.ListAll(ctx)
+func (s *service) ListAllReviews(ctx context.Context, page, limit int64, search, filter string) ([]*domain.Review, int64, error) {
+	return s.repo.ListAll(ctx, page, limit, search, filter)
 }
 
 func (s *service) ApproveReview(ctx context.Context, id int64) error {

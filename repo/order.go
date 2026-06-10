@@ -122,7 +122,36 @@ func (r *orderRepo) ListByUser(ctx context.Context, userID int64) ([]*domain.Ord
 	return orders, nil
 }
 
-func (r *orderRepo) ListAll(ctx context.Context) ([]*domain.Order, error) {
+func (r *orderRepo) ListAll(ctx context.Context, page, limit int64, search, status string) ([]*domain.Order, int64, error) {
+	var whereClauses []string
+	var args []any
+
+	if status != "" && status != "All" {
+		whereClauses = append(whereClauses, fmt.Sprintf("o.order_status = $%d", len(args)+1))
+		args = append(args, status)
+	}
+
+	if search != "" {
+		param := "%" + search + "%"
+		whereClauses = append(whereClauses, fmt.Sprintf("(o.id::text LIKE $%d OR LOWER(u.full_name) LIKE LOWER($%d) OR LOWER(u.phone) LIKE LOWER($%d))", len(args)+1, len(args)+2, len(args)+3))
+		args = append(args, param, param, param)
+	}
+
+	whereSQL := ""
+	if len(whereClauses) > 0 {
+		whereSQL = " WHERE " + whereClauses[0]
+		for i := 1; i < len(whereClauses); i++ {
+			whereSQL += " AND " + whereClauses[i]
+		}
+	}
+
+	countQuery := "SELECT COUNT(*) FROM orders o JOIN users u ON o.user_id = u.id" + whereSQL
+	var count int64
+	err := r.db.GetContext(ctx, &count, countQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	query := `
 		SELECT 
 			o.id, o.user_id, o.total_price, o.payment_method, o.payment_status, 
@@ -131,11 +160,16 @@ func (r *orderRepo) ListAll(ctx context.Context) ([]*domain.Order, error) {
 			u.full_name, u.email, u.phone
 		FROM orders o
 		JOIN users u ON o.user_id = u.id
-		ORDER BY o.created_at DESC
-	`
-	rows, err := r.db.QueryContext(ctx, query)
+	` + whereSQL + " ORDER BY o.created_at DESC"
+
+	if limit > 0 {
+		offset := (page - 1) * limit
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -159,11 +193,11 @@ func (r *orderRepo) ListAll(ctx context.Context) ([]*domain.Order, error) {
 
 	for _, o := range orders {
 		if err := r.populateOrderItems(ctx, o); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 	}
 
-	return orders, nil
+	return orders, count, nil
 }
 
 func (r *orderRepo) populateOrderItems(ctx context.Context, o *domain.Order) error {

@@ -3,6 +3,7 @@ package coupon
 import (
 	"encoding/json"
 	"eraya/domain"
+	"eraya/util"
 	"net/http"
 	"strconv"
 	"time"
@@ -45,7 +46,30 @@ func (h *Handler) CreateCoupon(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) ListCoupons(w http.ResponseWriter, r *http.Request) {
-	coupons, err := h.svc.ListCoupons(r.Context())
+	search := r.URL.Query().Get("search")
+
+	pageAsStr := r.URL.Query().Get("page")
+	if pageAsStr != "" {
+		page, _ := strconv.ParseInt(pageAsStr, 10, 64)
+		if page <= 0 {
+			page = 1
+		}
+		limitAsStr := r.URL.Query().Get("limit")
+		limit, _ := strconv.ParseInt(limitAsStr, 10, 64)
+		if limit <= 0 {
+			limit = 10
+		}
+
+		coupons, count, err := h.svc.ListCoupons(r.Context(), page, limit, search)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		util.SendPage(w, coupons, page, limit, count)
+		return
+	}
+
+	coupons, _, err := h.svc.ListCoupons(r.Context(), 0, 0, search)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -50,7 +50,7 @@ type CartRepo interface {
 type OrderRepo interface {
 	Create(ctx context.Context, order *Order, items []*OrderItem) (*Order, error)
 	ListByUser(ctx context.Context, userID int64) ([]*Order, error)
-	ListAll(ctx context.Context) ([]*Order, error)
+	ListAll(ctx context.Context, page, limit int64, search, status string) ([]*Order, int64, error)
 	FindByID(ctx context.Context, id int64) (*Order, error)
 	UpdateStatus(ctx context.Context, id int64, status, paymentStatus string) error
 	UpdateStatusWithStock(ctx context.Context, id int64, status, paymentStatus string) error

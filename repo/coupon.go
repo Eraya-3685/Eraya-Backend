@@ -57,14 +57,39 @@ func (r *couponRepo) FindByID(ctx context.Context, id int64) (*domain.Coupon, er
 	return &c, nil
 }
 
-func (r *couponRepo) List(ctx context.Context) ([]*domain.Coupon, error) {
-	query := `SELECT * FROM coupons ORDER BY created_at DESC`
-	var coupons []*domain.Coupon
-	err := r.db.SelectContext(ctx, &coupons, query)
-	if err != nil {
-		return nil, err
+func (r *couponRepo) List(ctx context.Context, page, limit int64, search string) ([]*domain.Coupon, int64, error) {
+	var whereClauses []string
+	var args []any
+
+	if search != "" {
+		whereClauses = append(whereClauses, "code ILIKE $1")
+		args = append(args, "%"+search+"%")
 	}
-	return coupons, nil
+
+	whereSQL := ""
+	if len(whereClauses) > 0 {
+		whereSQL = " WHERE " + whereClauses[0]
+	}
+
+	countQuery := "SELECT COUNT(*) FROM coupons" + whereSQL
+	var count int64
+	err := r.db.GetContext(ctx, &count, countQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	query := "SELECT * FROM coupons" + whereSQL + " ORDER BY created_at DESC"
+	if limit > 0 {
+		offset := (page - 1) * limit
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	}
+
+	var coupons []*domain.Coupon
+	err = r.db.SelectContext(ctx, &coupons, query, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+	return coupons, count, nil
 }
 
 func (r *couponRepo) Delete(ctx context.Context, id int64) error {

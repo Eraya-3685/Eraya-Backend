@@ -375,10 +375,35 @@ func (h *Handler) BulkUpdateUserRole(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {array} domain.User
 // @Router /users [get]
 func (h *Handler) ListUsers(w http.ResponseWriter, r *http.Request) {
-	users, err := h.svc.ListUsers(r.Context())
+	search := r.URL.Query().Get("search")
+	role := r.URL.Query().Get("role")
+
+	pageAsStr := r.URL.Query().Get("page")
+	if pageAsStr != "" {
+		page, _ := strconv.ParseInt(pageAsStr, 10, 64)
+		if page <= 0 {
+			page = 1
+		}
+		limitAsStr := r.URL.Query().Get("limit")
+		limit, _ := strconv.ParseInt(limitAsStr, 10, 64)
+		if limit <= 0 {
+			limit = 10
+		}
+
+		users, count, err := h.svc.ListUsers(r.Context(), page, limit, search, role)
+		if err != nil {
+			slog.Error("Failed to list users", "error", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		util.SendPage(w, users, page, limit, count)
+		return
+	}
+
+	users, _, err := h.svc.ListUsers(r.Context(), 0, 0, search, role)
 	if err != nil {
 		slog.Error("Failed to list users", "error", err)
-		http.Error(w, "failed to list users", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 

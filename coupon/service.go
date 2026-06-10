@@ -48,8 +48,8 @@ func (s *service) GetCouponByCode(ctx context.Context, code string) (*domain.Cou
 	return s.repo.FindByCode(ctx, code)
 }
 
-func (s *service) ListCoupons(ctx context.Context) ([]*domain.Coupon, error) {
-	return s.repo.List(ctx)
+func (s *service) ListCoupons(ctx context.Context, page, limit int64, search string) ([]*domain.Coupon, int64, error) {
+	return s.repo.List(ctx, page, limit, search)
 }
 
 func (s *service) DeleteCoupon(ctx context.Context, id int64) error {

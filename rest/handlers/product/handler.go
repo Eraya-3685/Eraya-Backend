@@ -413,8 +413,48 @@ func (h *Handler) ListCategories(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	search := r.URL.Query().Get("search")
+	var filtered []*domain.Category
+	if search != "" {
+		searchLower := strings.ToLower(search)
+		for _, cat := range categories {
+			if strings.Contains(strings.ToLower(cat.Name), searchLower) {
+				filtered = append(filtered, cat)
+			}
+		}
+	} else {
+		filtered = categories
+	}
+
+	pageAsStr := r.URL.Query().Get("page")
+	if pageAsStr != "" {
+		page, _ := strconv.ParseInt(pageAsStr, 10, 64)
+		if page <= 0 {
+			page = 1
+		}
+		limitAsStr := r.URL.Query().Get("limit")
+		limit, _ := strconv.ParseInt(limitAsStr, 10, 64)
+		if limit <= 0 {
+			limit = 10
+		}
+
+		total := int64(len(filtered))
+		offset := (page - 1) * limit
+		if offset > total {
+			offset = total
+		}
+		end := offset + limit
+		if end > total {
+			end = total
+		}
+
+		paginatedCategories := filtered[offset:end]
+		util.SendPage(w, paginatedCategories, page, limit, total)
+		return
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(categories)
+	json.NewEncoder(w).Encode(filtered)
 }
 
 // UpdateCategory godoc

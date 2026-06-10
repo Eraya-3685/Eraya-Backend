@@ -22,7 +22,7 @@ type Service interface {
 	ForgotPassword(ctx context.Context, email string) error
 	ResetPassword(ctx context.Context, email string, code string, newPassword string) (string, *domain.User, error)
 	DeleteUser(ctx context.Context, userID int64) error
-	ListUsers(ctx context.Context) ([]*domain.User, error)
+	ListUsers(ctx context.Context, page, limit int64, search, role string) ([]*domain.User, int64, error)
 	BulkUpdateRole(ctx context.Context, adminID int64, userIDs []int64, role string, permissions []string, otp string, password string) error
 	ActivateUser(ctx context.Context, userID int64) error
 
@@ -41,7 +41,7 @@ type UserRepo interface {
 	UpdateRole(ctx context.Context, id int64, role string, permissions []string) error
 	UpdatePassword(ctx context.Context, id int64, passwordHash string) error
 	Delete(ctx context.Context, id int64) error
-	ListAll(ctx context.Context) ([]*domain.User, error)
+	ListAll(ctx context.Context, page, limit int64, search, role string) ([]*domain.User, int64, error)
 	BulkUpdateRole(ctx context.Context, ids []int64, role string, permissions []string) error
 	UpdateStatus(ctx context.Context, id int64, isActive bool) error
 	DeleteUnverified(ctx context.Context, olderThanHours int) error

@@ -189,8 +189,8 @@ func (s *service) GetOrderByID(ctx context.Context, orderID, userID int64) (*dom
 	}
 	return order, nil
 }
-func (s *service) AdminGetAllOrders(ctx context.Context) ([]*domain.Order, error) {
-	return s.orderRepo.ListAll(ctx)
+func (s *service) AdminGetAllOrders(ctx context.Context, page, limit int64, search, status string) ([]*domain.Order, int64, error) {
+	return s.orderRepo.ListAll(ctx, page, limit, search, status)
 }
 
 func (s *service) AdminConfirmOrder(ctx context.Context, orderID int64) error {
@@ -316,7 +316,7 @@ func (s *service) AdminGetDashboardStats(ctx context.Context, adminID int64, tim
 	// Fetch all orders concurrently (critical: if this fails, we return error)
 	g.Go(func() error {
 		var err error
-		orders, err = s.orderRepo.ListAll(gCtx)
+		orders, _, err = s.orderRepo.ListAll(gCtx, 0, 0, "", "")
 		return err
 	})
 
@@ -343,7 +343,7 @@ func (s *service) AdminGetDashboardStats(ctx context.Context, adminID int64, tim
 	// Fetch users concurrently (non-critical: log and proceed if fails)
 	g.Go(func() error {
 		var err error
-		users, err = s.userSvc.ListUsers(gCtx)
+		users, _, err = s.userSvc.ListUsers(gCtx, 0, 0, "", "")
 		if err != nil {
 			slog.Warn("Failed to fetch users for dashboard", "error", err)
 		}

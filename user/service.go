@@ -312,8 +312,8 @@ func (s *service) UpdateRole(ctx context.Context, userID int64, role string) err
 	return err
 }
 
-func (s *service) ListUsers(ctx context.Context) ([]*domain.User, error) {
-	return s.repo.ListAll(ctx)
+func (s *service) ListUsers(ctx context.Context, page, limit int64, search, role string) ([]*domain.User, int64, error) {
+	return s.repo.ListAll(ctx, page, limit, search, role)
 }
 
 func (s *service) SocialLogin(ctx context.Context, u *domain.User) (string, *domain.User, error) {

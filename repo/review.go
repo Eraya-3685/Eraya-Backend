@@ -64,17 +64,52 @@ func (r *reviewRepo) ListByProduct(ctx context.Context, productID int64) ([]*dom
 	return reviews, nil
 }
 
-func (r *reviewRepo) ListAll(ctx context.Context) ([]*domain.Review, error) {
+func (r *reviewRepo) ListAll(ctx context.Context, page, limit int64, search, filter string) ([]*domain.Review, int64, error) {
+	var whereClauses []string
+	var args []any
+
+	if filter == "Pending" {
+		whereClauses = append(whereClauses, "r.is_approved = false")
+	} else if filter == "Approved" {
+		whereClauses = append(whereClauses, "r.is_approved = true")
+	}
+
+	if search != "" {
+		param := "%" + search + "%"
+		whereClauses = append(whereClauses, fmt.Sprintf("(u.full_name ILIKE $%d OR r.comment ILIKE $%d)", len(args)+1, len(args)+2))
+		args = append(args, param, param)
+	}
+
+	whereSQL := ""
+	if len(whereClauses) > 0 {
+		whereSQL = " WHERE " + whereClauses[0]
+		for i := 1; i < len(whereClauses); i++ {
+			whereSQL += " AND " + whereClauses[i]
+		}
+	}
+
+	countQuery := "SELECT COUNT(*) FROM reviews r JOIN users u ON r.user_id = u.id" + whereSQL
+	var count int64
+	err := r.db.GetContext(ctx, &count, countQuery, args...)
+	if err != nil {
+		return nil, 0, err
+	}
+
 	query := `
 		SELECT r.id, r.user_id, r.product_id, r.rating, r.comment, r.created_at, r.is_verified, r.is_approved, r.image_url,
 		       u.id, u.full_name
 		FROM reviews r
 		JOIN users u ON r.user_id = u.id
-		ORDER BY r.created_at DESC
-	`
-	rows, err := r.db.QueryContext(ctx, query)
+	` + whereSQL + " ORDER BY r.created_at DESC"
+
+	if limit > 0 {
+		offset := (page - 1) * limit
+		query += fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	}
+
+	rows, err := r.db.QueryContext(ctx, query, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -87,12 +122,12 @@ func (r *reviewRepo) ListAll(ctx context.Context) ([]*domain.Review, error) {
 			&u.ID, &u.FullName,
 		)
 		if err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		rev.User = u
 		reviews = append(reviews, rev)
 	}
-	return reviews, nil
+	return reviews, count, nil
 }
 
 func (r *reviewRepo) Approve(ctx context.Context, id int64) error {

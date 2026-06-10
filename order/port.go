@@ -14,7 +14,7 @@ type Service interface {
 	ConfirmPayment(ctx context.Context, orderID int64, trxID string, amount float64) error
 
 	// Admin
-	AdminGetAllOrders(ctx context.Context) ([]*domain.Order, error)
+	AdminGetAllOrders(ctx context.Context, page, limit int64, search, status string) ([]*domain.Order, int64, error)
 	AdminConfirmOrder(ctx context.Context, orderID int64) error
 	AdminUpdateOrderStatus(ctx context.Context, orderID int64, status string, estimatedDate string) error
 	AdminRequestDeleteOTP(ctx context.Context, adminID int64) error
@@ -31,7 +31,7 @@ type CartRepo interface {
 type OrderRepo interface {
 	Create(ctx context.Context, order *domain.Order, items []*domain.OrderItem) (*domain.Order, error)
 	ListByUser(ctx context.Context, userID int64) ([]*domain.Order, error)
-	ListAll(ctx context.Context) ([]*domain.Order, error)
+	ListAll(ctx context.Context, page, limit int64, search, status string) ([]*domain.Order, int64, error)
 	FindByID(ctx context.Context, id int64) (*domain.Order, error)
 	UpdateStatus(ctx context.Context, id int64, status, paymentStatus string) error
 	Delete(ctx context.Context, id int64) error
