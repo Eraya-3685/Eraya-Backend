@@ -63,19 +63,23 @@ func (rl *rateLimiter) allow(userID int64) bool {
 
 func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Service) {
 	r.Route("/ai", func(r chi.Router) {
-		r.Use(erayamiddleware.AuthMiddleware(jwtSecret, userSvc))
+		r.Use(erayamiddleware.OptionalAuthMiddleware(jwtSecret, userSvc))
 		r.Post("/chat", h.Chat)
 	})
 }
 
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
+	var limiterKey int64
 	userID, ok := r.Context().Value("user_id").(int64)
-	if !ok {
-		http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-		return
+	if ok {
+		limiterKey = userID
+	} else {
+		// Use a combination of IP address and a negative offset for guests to separate from user IDs
+		// In a real app, you'd use a better IP-based rate limiter
+		limiterKey = -1 // Simplified for now
 	}
 
-	if !limiter.allow(userID) {
+	if !limiter.allow(limiterKey) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusTooManyRequests)
 		json.NewEncoder(w).Encode(map[string]string{"error": "Too many requests. Please wait a moment."})

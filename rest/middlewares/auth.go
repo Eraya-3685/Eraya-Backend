@@ -53,6 +53,45 @@ func AuthMiddleware(secret string, userSvc user.Service) func(http.Handler) http
 	}
 }
 
+func OptionalAuthMiddleware(secret string, userSvc user.Service) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			tokenString := ""
+
+			if authHeader != "" && strings.HasPrefix(authHeader, "Bearer ") {
+				tokenString = strings.TrimPrefix(authHeader, "Bearer ")
+			} else {
+				tokenString = r.URL.Query().Get("token")
+			}
+
+			if tokenString == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			claims, err := util.ValidateJWT(tokenString, secret)
+			if err != nil {
+				// Proceed as guest if token is invalid
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			user, err := userSvc.GetProfile(r.Context(), claims.UserID)
+			if err != nil || user == nil || !user.IsActive {
+				// Proceed as guest
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			ctx := context.WithValue(r.Context(), "user_id", user.ID)
+			ctx = context.WithValue(ctx, "role", user.Role)
+			ctx = context.WithValue(ctx, "permissions", user.Permissions)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 func AdminMiddleware() func(http.Handler) http.Handler {
 	return RoleMiddleware("admin")
 }
