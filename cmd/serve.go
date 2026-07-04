@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"eraya/aichat"
 	chat_pkg "eraya/chat"
 	"eraya/config"
 	"eraya/infra/bkash"
@@ -12,6 +13,7 @@ import (
 	"eraya/product"
 	"eraya/repo"
 	"eraya/rest"
+	aichat_handler "eraya/rest/handlers/aichat"
 	chat_handler "eraya/rest/handlers/chat"
 	order_handler "eraya/rest/handlers/order"
 	product_handler "eraya/rest/handlers/product"
@@ -115,6 +117,10 @@ func Serve() {
 	orderService := order.NewService(cartRepo, orderRepo, productService, settingsService, mailer, userService, chatService, couponService)
 	orderHandler := order_handler.NewHandler(orderService, bkashClient)
 
+	// AI Chat Service
+	aiService := aichat.NewService(cnf.AI.GeminiAPIKey, cnf.AI.GroqAPIKey, productService)
+	aiHandler := aichat_handler.NewHandler(aiService)
+
 	server := rest.NewServer(
 		cnf.HttpPort,
 		cnf.JwtSecretKey,
@@ -127,6 +133,7 @@ func Serve() {
 		wishlistHandler,
 		settingsHandler,
 		couponHandler,
+		aiHandler,
 	)
 
 	if cnf.BaseURL != "" && cnf.BaseURL != "http://localhost:8080/" {

@@ -21,6 +21,11 @@ type SMTPConfig struct {
 	Password string
 }
 
+type AIConfig struct {
+	GeminiAPIKey string
+	GroqAPIKey   string
+}
+
 type BKashConfig struct {
 	Username string
 	Password string
@@ -40,6 +45,7 @@ type Config struct {
 	Supabase       SupabaseConfig
 	SMTP           SMTPConfig
 	BKash          BKashConfig
+	AI             AIConfig
 }
 
 var configurations *Config
@@ -87,6 +93,10 @@ func loadConfig() {
 			AppKey:    getEnv("BKASH_APP_KEY", ""),
 			AppSecret: getEnv("BKASH_APP_SECRET", ""),
 			BaseURL:   getEnv("BKASH_BASE_URL", "https://tokenized.sandbox.bka.sh/v1.2.0-beta"),
+		},
+		AI: AIConfig{
+			GeminiAPIKey: getEnv("GEMINI_API_KEY", ""),
+			GroqAPIKey:   getEnv("GROQ_API_KEY", ""),
 		},
 	}
 }

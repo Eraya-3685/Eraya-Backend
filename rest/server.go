@@ -1,6 +1,7 @@
 package rest
 
 import (
+	aichat_handler "eraya/rest/handlers/aichat"
 	chat_handler "eraya/rest/handlers/chat"
 	order_handler "eraya/rest/handlers/order"
 	product_handler "eraya/rest/handlers/product"
@@ -35,6 +36,7 @@ type Server struct {
 	wishlistHandler *wishlist_handler.Handler
 	settingsHandler *settings_handler.Handler
 	couponHandler   *coupon_handler.Handler
+	aichatHandler   *aichat_handler.Handler
 }
 
 func NewServer(
@@ -49,6 +51,7 @@ func NewServer(
 	wishlistHandler *wishlist_handler.Handler,
 	settingsHandler *settings_handler.Handler,
 	couponHandler *coupon_handler.Handler,
+	aichatHandler *aichat_handler.Handler,
 ) *Server {
 	return &Server{
 		port:            port,
@@ -62,6 +65,7 @@ func NewServer(
 		wishlistHandler: wishlistHandler,
 		settingsHandler: settingsHandler,
 		couponHandler:   couponHandler,
+		aichatHandler:   aichatHandler,
 	}
 }
 
@@ -149,6 +153,7 @@ func (server *Server) Start() {
 		wishlist_handler.RegisterRoutes(r, server.wishlistHandler, server.jwtSecret, server.userSvc)
 		settings_handler.RegisterRoutes(r, server.settingsHandler, server.jwtSecret, server.userSvc)
 		coupon_handler.RegisterRoutes(r, server.couponHandler, server.jwtSecret, server.userSvc)
+		aichat_handler.RegisterRoutes(r, server.aichatHandler, server.jwtSecret, server.userSvc)
 	})
 
 	wrappedMux := manager.WrapMux(mux, manager.GetGlobalMiddlewares()...)
