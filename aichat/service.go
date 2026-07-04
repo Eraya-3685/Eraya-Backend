@@ -16,18 +16,23 @@ import (
 )
 
 type service struct {
-	geminiKey  string
-	groqKey    string
-	productSvc product.Service
-	httpClient *http.Client
+	geminiKey   string
+	groqKey     string
+	productSvc  product.Service
+	frontendURL string
+	httpClient  *http.Client
 }
 
-func NewService(geminiKey, groqKey string, productSvc product.Service) Service {
+func NewService(geminiKey, groqKey string, productSvc product.Service, frontendURL string) Service {
+	// Strip trailing slash if present for cleaner URLs
+	frontendURL = strings.TrimSuffix(frontendURL, "/")
+	
 	return &service{
-		geminiKey:  geminiKey,
-		groqKey:    groqKey,
-		productSvc: productSvc,
-		httpClient: &http.Client{Timeout: 30 * time.Second},
+		geminiKey:   geminiKey,
+		groqKey:     groqKey,
+		productSvc:  productSvc,
+		frontendURL: frontendURL,
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
@@ -39,10 +44,10 @@ RULES:
 3. When recommending products, ONLY recommend from the PRODUCT CATALOG provided below.
 4. When recommending products, you MUST format each product EXACTLY like this: [PRODUCT:slug|Product Name|Price] 
    Example: [PRODUCT:cool-watch|Cool Watch|800]
-5. If the catalog has no matching products, say: "I couldn't find exact matches, but you can browse all products at eraya.com/products"
+5. If the catalog has no matching products, say: "I couldn't find exact matches, but you can browse all products at %s/products"
 6. Be concise but warm. Use emojis sparingly.
 7. You can respond in both Bangla and English.
-8. For order tracking, direct users to their Profile page.
+8. For order tracking, direct users to their Profile page at %s/profile.
 9. Format general text clearly, but products MUST use the [PRODUCT:slug|name|price] syntax.
 10. Keep responses under 300 words.`
 
@@ -50,7 +55,7 @@ func (s *service) Chat(ctx context.Context, userMessage string, history []ChatMe
 	// Build product context from the user's message
 	productContext := s.buildProductContext(ctx, userMessage)
 
-	fullSystemPrompt := systemPrompt
+	fullSystemPrompt := fmt.Sprintf(systemPrompt, s.frontendURL, s.frontendURL)
 	if productContext != "" {
 		fullSystemPrompt += "\n\nPRODUCT CATALOG (Real products from our store):\n" + productContext
 	}
