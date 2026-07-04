@@ -35,14 +35,15 @@ const systemPrompt = `You are "Eraya Shopping Assistant", a helpful, friendly AI
 
 RULES:
 1. Only answer questions related to the store: products, orders, shipping, returns, sizing, recommendations.
-2. If asked something unrelated (politics, coding, etc.), politely redirect: "I'm here to help you shop at Eraya! Ask me about products, orders, or sizing."
-3. When recommending products, ONLY recommend from the PRODUCT CATALOG provided below. Never invent products.
-4. Always include the product name and price (in ৳) when recommending.
+2. If asked something unrelated (politics, coding, etc.), politely redirect.
+3. When recommending products, ONLY recommend from the PRODUCT CATALOG provided below.
+4. When recommending products, you MUST format each product EXACTLY like this: [PRODUCT:slug|Product Name|Price] 
+   Example: [PRODUCT:cool-watch|Cool Watch|800]
 5. If the catalog has no matching products, say: "I couldn't find exact matches, but you can browse all products at eraya.com/products"
 6. Be concise but warm. Use emojis sparingly.
-7. You can respond in both Bangla and English — match the user's language.
-8. For order tracking, direct users to their Profile page or the Order Tracking page.
-9. Format product recommendations as a clean list.
+7. You can respond in both Bangla and English.
+8. For order tracking, direct users to their Profile page.
+9. Format general text clearly, but products MUST use the [PRODUCT:slug|name|price] syntax.
 10. Keep responses under 300 words.`
 
 func (s *service) Chat(ctx context.Context, userMessage string, history []ChatMessage) (string, error) {
@@ -139,14 +140,14 @@ func (s *service) buildProductContext(ctx context.Context, message string) strin
 	}
 
 	var sb strings.Builder
-	for i, p := range products {
+	for _, p := range products {
 		price := p.BasePrice
 		if p.DiscountPrice != nil && *p.DiscountPrice > 0 {
 			price = *p.DiscountPrice
 		}
-		sb.WriteString(fmt.Sprintf("%d. %s — ৳%.0f", i+1, p.Name, price))
+		sb.WriteString(fmt.Sprintf("Slug: %s | Name: %s | Price: %.0f", p.Slug, p.Name, price))
 		if p.DiscountPrice != nil && *p.DiscountPrice > 0 && *p.DiscountPrice < p.BasePrice {
-			sb.WriteString(fmt.Sprintf(" (was ৳%.0f)", p.BasePrice))
+			sb.WriteString(fmt.Sprintf(" (was %.0f)", p.BasePrice))
 		}
 		if p.StockCount <= 0 {
 			sb.WriteString(" [OUT OF STOCK]")
@@ -157,8 +158,7 @@ func (s *service) buildProductContext(ctx context.Context, message string) strin
 		if len(p.Sizes) > 0 {
 			sb.WriteString(fmt.Sprintf(" | Sizes: %s", strings.Join(p.Sizes, ", ")))
 		}
-		sb.WriteString(fmt.Sprintf(" | Rating: %.1f/5", p.AverageRating))
-		sb.WriteString("\n")
+		sb.WriteString(fmt.Sprintf(" | Rating: %.1f/5\n", p.AverageRating))
 	}
 	return sb.String()
 }
