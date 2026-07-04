@@ -66,7 +66,6 @@ func (s *service) Chat(ctx context.Context, userMessage string, history []ChatMe
 		if err == nil && reply != "" {
 			return reply, nil
 		}
-		slog.Warn("Gemini API failed, falling back to Groq", "error", err)
 	}
 
 	// Fallback to Groq
@@ -75,7 +74,6 @@ func (s *service) Chat(ctx context.Context, userMessage string, history []ChatMe
 		if err == nil && reply != "" {
 			return reply, nil
 		}
-		slog.Error("Groq API also failed", "error", err)
 		return "", fmt.Errorf("both AI providers failed")
 	}
 
@@ -255,7 +253,7 @@ func (s *service) callGemini(ctx context.Context, systemPrompt, userMessage stri
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("gemini returned status %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("gemini returned status %d", resp.StatusCode)
 	}
 
 	var geminiResp geminiResponse
@@ -343,7 +341,7 @@ func (s *service) callGroq(ctx context.Context, systemPrompt, userMessage string
 	}
 
 	if resp.StatusCode != 200 {
-		return "", fmt.Errorf("groq returned status %d: %s", resp.StatusCode, string(respBody))
+		return "", fmt.Errorf("groq returned status %d", resp.StatusCode)
 	}
 
 	var groqResp groqResponse
