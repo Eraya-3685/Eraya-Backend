@@ -118,7 +118,8 @@ func Serve() {
 	orderHandler := order_handler.NewHandler(orderService, bkashClient)
 
 	// AI Chat Service
-	aiService := aichat.NewService(cnf.AI.GeminiAPIKey, cnf.AI.GroqAPIKey, productService, cnf.FrontendURL)
+	aiRepo := repo.NewAIChatRepo(dbCon)
+	aiService := aichat.NewService(aiRepo, cnf.AI.GeminiAPIKey, cnf.AI.GroqAPIKey, productService, cnf.FrontendURL)
 	aiHandler := aichat_handler.NewHandler(aiService)
 
 	server := rest.NewServer(

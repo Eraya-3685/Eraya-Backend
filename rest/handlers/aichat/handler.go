@@ -65,14 +65,17 @@ func RegisterRoutes(r chi.Router, h *Handler, jwtSecret string, userSvc user.Ser
 	r.Route("/ai", func(r chi.Router) {
 		r.Use(erayamiddleware.OptionalAuthMiddleware(jwtSecret, userSvc))
 		r.Post("/chat", h.Chat)
+		r.Get("/chat", h.GetHistory)
 	})
 }
 
 func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 	var limiterKey int64
+	var userIDPtr *int64
 	userID, ok := r.Context().Value("user_id").(int64)
 	if ok {
 		limiterKey = userID
+		userIDPtr = &userID
 	} else {
 		// Use a combination of IP address and a negative offset for guests to separate from user IDs
 		// In a real app, you'd use a better IP-based rate limiter
@@ -108,7 +111,7 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 		req.History = req.History[len(req.History)-20:]
 	}
 
-	reply, err := h.svc.Chat(r.Context(), req.Message, req.History)
+	reply, err := h.svc.Chat(r.Context(), userIDPtr, req.Message, req.History)
 	if err != nil {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusServiceUnavailable)
@@ -120,4 +123,27 @@ func (h *Handler) Chat(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(chatResponse{Reply: reply})
+}
+
+func (h *Handler) GetHistory(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value("user_id").(int64)
+	if !ok {
+		// Guest users do not have history
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode([]aichat.ChatMessage{})
+		return
+	}
+
+	history, err := h.svc.GetHistory(r.Context(), userID, 50)
+	if err != nil {
+		http.Error(w, `{"error":"failed to fetch history"}`, http.StatusInternalServerError)
+		return
+	}
+
+	if history == nil {
+		history = []aichat.ChatMessage{}
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(history)
 }

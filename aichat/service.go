@@ -7,7 +7,6 @@ import (
 	"eraya/product"
 	"fmt"
 	"io"
-	"log/slog"
 	"net/http"
 	"regexp"
 	"strconv"
@@ -16,6 +15,7 @@ import (
 )
 
 type service struct {
+	repo        Repo
 	geminiKey   string
 	groqKey     string
 	productSvc  product.Service
@@ -23,11 +23,12 @@ type service struct {
 	httpClient  *http.Client
 }
 
-func NewService(geminiKey, groqKey string, productSvc product.Service, frontendURL string) Service {
+func NewService(repo Repo, geminiKey, groqKey string, productSvc product.Service, frontendURL string) Service {
 	// Strip trailing slash if present for cleaner URLs
 	frontendURL = strings.TrimSuffix(frontendURL, "/")
-	
+
 	return &service{
+		repo:        repo,
 		geminiKey:   geminiKey,
 		groqKey:     groqKey,
 		productSvc:  productSvc,
@@ -51,7 +52,7 @@ RULES:
 9. Format general text clearly, but products MUST use the [PRODUCT:slug|name|price] syntax.
 10. Keep responses under 300 words.`
 
-func (s *service) Chat(ctx context.Context, userMessage string, history []ChatMessage) (string, error) {
+func (s *service) Chat(ctx context.Context, userID *int64, userMessage string, history []ChatMessage) (string, error) {
 	// Build product context from the user's message
 	productContext := s.buildProductContext(ctx, userMessage)
 
@@ -64,6 +65,10 @@ func (s *service) Chat(ctx context.Context, userMessage string, history []ChatMe
 	if s.geminiKey != "" {
 		reply, err := s.callGemini(ctx, fullSystemPrompt, userMessage, history)
 		if err == nil && reply != "" {
+			if userID != nil {
+				_ = s.repo.SaveMessage(ctx, *userID, "user", userMessage)
+				_ = s.repo.SaveMessage(ctx, *userID, "assistant", reply)
+			}
 			return reply, nil
 		}
 	}
@@ -72,12 +77,20 @@ func (s *service) Chat(ctx context.Context, userMessage string, history []ChatMe
 	if s.groqKey != "" {
 		reply, err := s.callGroq(ctx, fullSystemPrompt, userMessage, history)
 		if err == nil && reply != "" {
+			if userID != nil {
+				_ = s.repo.SaveMessage(ctx, *userID, "user", userMessage)
+				_ = s.repo.SaveMessage(ctx, *userID, "assistant", reply)
+			}
 			return reply, nil
 		}
 		return "", fmt.Errorf("both AI providers failed")
 	}
 
 	return "", fmt.Errorf("no AI provider configured")
+}
+
+func (s *service) GetHistory(ctx context.Context, userID int64, limit int) ([]ChatMessage, error) {
+	return s.repo.GetHistory(ctx, userID, limit)
 }
 
 // buildProductContext queries the database for products relevant to the user's message.
@@ -169,9 +182,9 @@ func (s *service) buildProductContext(ctx context.Context, message string) strin
 // ---- Gemini API ----
 
 type geminiRequest struct {
-	Contents         []geminiContent        `json:"contents"`
-	SystemInstruction *geminiContent        `json:"systemInstruction,omitempty"`
-	GenerationConfig map[string]interface{} `json:"generationConfig,omitempty"`
+	Contents          []geminiContent        `json:"contents"`
+	SystemInstruction *geminiContent         `json:"systemInstruction,omitempty"`
+	GenerationConfig  map[string]interface{} `json:"generationConfig,omitempty"`
 }
 
 type geminiContent struct {
