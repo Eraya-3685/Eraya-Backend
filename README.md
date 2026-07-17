@@ -400,13 +400,3 @@ swag init
 | **Unverified User Cleanup**| Every 6 hours | Removes unverified accounts         |
 
 ---
-
-## 📜 License
-
-This project is licensed under the [Apache 2.0 License](http://www.apache.org/licenses/LICENSE-2.0.html).
-
----
-
-<p align="center">
-  Built with ❤️ in Go
-</p>
